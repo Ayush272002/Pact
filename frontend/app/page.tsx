@@ -1,9 +1,28 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, BrainCircuit, Users2, Activity } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export default function LandingPage() {
+  const router = useRouter();
+  const [scenario, setScenario] = useState("");
+
+  const handleSimulate = () => {
+    if (scenario.trim()) {
+      router.push(`/simulate?scenario=${encodeURIComponent(scenario)}`);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSimulate();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#030303] text-zinc-100 selection:bg-indigo-500/30 selection:text-indigo-200">
       
@@ -49,11 +68,17 @@ export default function LandingPage() {
             <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
             <div className="relative flex items-center bg-zinc-900/80 border border-white/10 rounded-xl p-2 backdrop-blur-xl">
               <Search className="ml-3 h-5 w-5 text-zinc-500" />
-              <Input 
-                placeholder="Describe a geopolitical conflict or enterprise deadlock..." 
+              <Input
+                value={scenario}
+                onChange={(e) => setScenario(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Describe a geopolitical conflict or enterprise deadlock..."
                 className="border-0 bg-transparent focus-visible:ring-0 text-white placeholder:text-zinc-600 text-base"
               />
-              <Button className="bg-white text-black hover:bg-zinc-200 px-6 font-semibold">
+              <Button
+                onClick={handleSimulate}
+                className="bg-white text-black hover:bg-zinc-200 px-6 font-semibold"
+              >
                 Simulate
               </Button>
             </div>
