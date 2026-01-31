@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Card component and related sub-components for content containers.
+ * Includes CardHeader, CardTitle, CardDescription, CardContent, CardAction, and CardFooter.
+ */
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

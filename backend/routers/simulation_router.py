@@ -118,6 +118,12 @@ async def stream_simulation(simulation_id: str) -> StreamingResponse:
                 new_state = simulation_service.step(simulation_id)
                 last_msg = new_state.chat_history[-1]
 
+                # Agent political capital updates
+                agent_capitals = {
+                    agent_id: agent.political_capital
+                    for agent_id, agent in new_state.agents.items()
+                }
+
                 event_data = {
                     "type": "message_added",
                     "epoch": new_state.current_epoch,
@@ -126,6 +132,8 @@ async def stream_simulation(simulation_id: str) -> StreamingResponse:
                     "sentiment_delta": last_msg.sentiment_delta,
                     "global_tension": new_state.global_tension,
                     "nash_product": new_state.nash_product,
+                    "agent_capitals": agent_capitals,
+                    "treaty_values": new_state.current_treaty.issue_values,
                 }
                 yield f"data: {json.dumps(event_data)}\n\n"
 

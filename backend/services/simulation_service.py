@@ -106,6 +106,9 @@ class SimulationService:
         message = self._generate_diplomatic_message(state, speaker_id)
         state.chat_history.append(message)
 
+        # Deduct political capital from speaker (speaking costs influence)
+        self._deduct_political_capital(state, speaker_id, message)
+
         # Update global tension based on sentiment
         self._update_global_tension(state, message.sentiment_delta)
 
@@ -122,15 +125,9 @@ class SimulationService:
         return state
 
     def _generate_intent_bids(self, state: SimulationState) -> list[IntentBid]:
-        """Generate IntentBids for all agents (Phase A)."""
-        bids = []
-
-        for agent in state.agents.values():
-            # Use LLM to generate bid
-            bid = llm_service.generate_intent_bid(agent, state)
-            bids.append(bid)
-
-        return bids
+        """Generate IntentBids for all agents in parallel (Phase A)."""
+        agents = list(state.agents.values())
+        return llm_service.generate_intent_bids_parallel(agents, state)
 
     def _select_speaker(
         self,
@@ -167,52 +164,19 @@ class SimulationService:
         self,
         config: ScenarioConfig,
     ) -> dict[str, AgentProfile]:
-        """Create default agent profiles for the scenario."""
-        first_issue = (
-            config.negotiation_issues[0] if config.negotiation_issues else "resources"
-        )
+        """Generate agent profiles dynamically using LLM.
 
-        return {
-            "agent_1": AgentProfile(
-                agent_id="agent_1",
-                name="United States",
-                archetype=IRArchetype.REALISM,
-                strategy=StrategyType.ZD_EXTORT_2,
-                cognitive_params=CognitiveParams(
-                    shadow_of_future=0.9,
-                    batna_score=0.8,
-                    audience_cost=0.5,
-                ),
-                utility_goals=[UtilityGoal(topic=first_issue, weight=0.9)],
-                private_mandate="Secure resources at all costs.",
-            ),
-            "agent_2": AgentProfile(
-                agent_id="agent_2",
-                name="European Union",
-                archetype=IRArchetype.LIBERALISM,
-                strategy=StrategyType.TIT_FOR_TAT,
-                cognitive_params=CognitiveParams(
-                    shadow_of_future=0.95,
-                    batna_score=0.4,
-                    audience_cost=0.9,
-                ),
-                utility_goals=[UtilityGoal(topic=first_issue, weight=0.7)],
-                private_mandate="Prevent conflict and build consensus.",
-            ),
-            "agent_3": AgentProfile(
-                agent_id="agent_3",
-                name="China",
-                archetype=IRArchetype.OFFENSIVE_REALISM,
-                strategy=StrategyType.PAVLOV,
-                cognitive_params=CognitiveParams(
-                    shadow_of_future=0.7,
-                    batna_score=0.6,
-                    audience_cost=0.4,
-                ),
-                utility_goals=[UtilityGoal(topic=first_issue, weight=0.8)],
-                private_mandate="Expand influence and secure strategic advantage.",
-            ),
-        }
+        Uses the scenario description to create appropriate agents
+        with relevant goals and personalities.
+
+        Args:
+            config: Scenario configuration with context
+
+        Returns:
+            Dictionary of agent profiles keyed by agent_id
+        """
+        agents = llm_service.generate_agents_from_scenario(config)
+        return agents
 
     def _should_trigger_shock(self, state: SimulationState) -> bool:
         """Determine if a stochastic shock should occur this turn."""
@@ -253,6 +217,36 @@ class SimulationService:
         """
         state.global_tension -= sentiment_delta  # Positive sentiment reduces tension
         state.global_tension = max(0.0, min(1.0, state.global_tension))
+
+    def _deduct_political_capital(
+        self,
+        state: SimulationState,
+        speaker_id: str,
+        message: DiplomaticMessage,
+    ) -> None:
+        """Deduct political capital from speaking agent.
+
+        Cost depends on the nature of the move:
+        - Aggressive moves cost more (burning bridges)
+        - Cooperative moves cost less
+        - Base cost ensures capital drains over time
+        """
+        agent = state.agents.get(speaker_id)
+        if not agent:
+            return
+
+        # Base cost: 3-6 points per turn
+        base_cost = random.randint(3, 6)
+
+        # Modifier based on sentiment (negative = aggressive = costly)
+        sentiment_modifier = 0
+        if message.sentiment_delta < -0.1:
+            sentiment_modifier = random.randint(2, 5)  # Aggression costs more
+        elif message.sentiment_delta > 0.1:
+            sentiment_modifier = -random.randint(1, 2)  # Cooperation is cheaper
+
+        total_cost = max(1, base_cost + sentiment_modifier)
+        agent.political_capital = max(0, agent.political_capital - total_cost)
 
     def _update_treaty_state(
         self,

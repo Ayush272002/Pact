@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Root layout component for the Next.js application.
+ * Configures global fonts, metadata, and toast notifications.
+ */
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { Toaster } from "sonner";
