@@ -25,42 +25,55 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-[#030303] text-zinc-100 selection:bg-indigo-500/30 selection:text-indigo-200">
-      
       {/* Navigation */}
       <nav className="flex items-center justify-between px-8 py-6 border-b border-white/5 backdrop-blur-md sticky top-0 z-50">
         <div className="flex items-center gap-8">
-          <span className="text-sm font-bold tracking-tighter uppercase italic">Pact</span>
+          <span className="text-sm font-bold tracking-tighter uppercase italic">
+            Pact
+          </span>
           <div className="hidden md:flex gap-6 text-xs font-medium text-zinc-500 uppercase tracking-widest">
-            <a href="#" className="hover:text-white transition-colors">Simulator</a>
-            <a href="#" className="hover:text-white transition-colors">Research Paper</a>
-            <a href="#" className="hover:text-white transition-colors">Nodes</a>
+            <a href="#" className="hover:text-white transition-colors">
+              Simulator
+            </a>
+            <a href="#" className="hover:text-white transition-colors">
+              Research Paper
+            </a>
+            <a href="#" className="hover:text-white transition-colors">
+              Nodes
+            </a>
           </div>
         </div>
-        <Button variant="ghost" className="text-xs uppercase tracking-widest hover:bg-white/5">
+        <Button
+          variant="ghost"
+          className="text-xs uppercase tracking-widest hover:bg-white/5"
+        >
           Enter Console
         </Button>
       </nav>
 
       {/* Hero Section */}
       <main className="relative flex flex-col items-center justify-center pt-32 pb-20 overflow-hidden">
-        
         {/* Background Glow - The "Swarm" Heart */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
-        
+
         {/* Main Content */}
         <div className="relative z-10 text-center space-y-8 max-w-4xl px-4">
-          <Badge variant="outline" className="border-indigo-500/30 text-indigo-400 bg-indigo-500/5 px-4 py-1 rounded-full animate-pulse">
+          <Badge
+            variant="outline"
+            className="border-indigo-500/30 text-indigo-400 bg-indigo-500/5 px-4 py-1 rounded-full animate-pulse"
+          >
             Adversarial Equilibrium Engine v1.0
           </Badge>
-          
+
           <h1 className="text-6xl md:text-8xl font-light tracking-tight text-white leading-tight">
             Force consensus <br />
             <span className="text-zinc-500 italic">through conflict.</span>
           </h1>
-          
+
           <p className="text-zinc-400 text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed">
-            A swarm of adversarial AI agents brute-forcing Nash Equilibrium. 
-            Define the scenario, watch the agents negotiate, and witness the emergent treaty.
+            A swarm of adversarial AI agents brute-forcing Nash Equilibrium.
+            Define the scenario, watch the agents negotiate, and witness the
+            emergent treaty.
           </p>
 
           {/* Prompt / Input Bar */}
@@ -88,19 +101,43 @@ export default function LandingPage() {
         {/* Feature Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-white/5 mt-32 w-full max-w-6xl border border-white/5">
           <div className="p-10 bg-[#030303] hover:bg-zinc-900/50 transition-colors group">
-            <BrainCircuit className="mb-4 text-zinc-500 group-hover:text-indigo-400 transition-colors" size={24} />
-            <h3 className="text-sm font-semibold uppercase tracking-widest mb-2">Swarm Logic</h3>
-            <p className="text-sm text-zinc-500 leading-relaxed">Parallel negotiation rounds where agents propose, critique, and trade via Monte Carlo simulations.</p>
+            <BrainCircuit
+              className="mb-4 text-zinc-500 group-hover:text-indigo-400 transition-colors"
+              size={24}
+            />
+            <h3 className="text-sm font-semibold uppercase tracking-widest mb-2">
+              Swarm Logic
+            </h3>
+            <p className="text-sm text-zinc-500 leading-relaxed">
+              Parallel negotiation rounds where agents propose, critique, and
+              trade via Monte Carlo simulations.
+            </p>
           </div>
           <div className="p-10 bg-[#030303] hover:bg-zinc-900/50 transition-colors group border-x border-white/5">
-            <Activity className="mb-4 text-zinc-500 group-hover:text-indigo-400 transition-colors" size={24} />
-            <h3 className="text-sm font-semibold uppercase tracking-widest mb-2">P(Stability)</h3>
-            <p className="text-sm text-zinc-500 leading-relaxed">Real-time prediction of deal longevity and identification of potential breakdown points.</p>
+            <Activity
+              className="mb-4 text-zinc-500 group-hover:text-indigo-400 transition-colors"
+              size={24}
+            />
+            <h3 className="text-sm font-semibold uppercase tracking-widest mb-2">
+              P(Stability)
+            </h3>
+            <p className="text-sm text-zinc-500 leading-relaxed">
+              Real-time prediction of deal longevity and identification of
+              potential breakdown points.
+            </p>
           </div>
           <div className="p-10 bg-[#030303] hover:bg-zinc-900/50 transition-colors group">
-            <Users2 className="mb-4 text-zinc-500 group-hover:text-indigo-400 transition-colors" size={24} />
-            <h3 className="text-sm font-semibold uppercase tracking-widest mb-2">Consensus Map</h3>
-            <p className="text-sm text-zinc-500 leading-relaxed">Visualise the transition from polarized conflict to optimized agreement through force-directed graphs.</p>
+            <Users2
+              className="mb-4 text-zinc-500 group-hover:text-indigo-400 transition-colors"
+              size={24}
+            />
+            <h3 className="text-sm font-semibold uppercase tracking-widest mb-2">
+              Consensus Map
+            </h3>
+            <p className="text-sm text-zinc-500 leading-relaxed">
+              Visualise the transition from polarized conflict to optimized
+              agreement through force-directed graphs.
+            </p>
           </div>
         </div>
       </main>
