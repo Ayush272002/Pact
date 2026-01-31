@@ -1,23 +1,13 @@
 """Data contracts and Pydantic schemas for the Pact Engine.
 
-Defines the Agent types, Simulation state, and Game Theory protocols.
+Defines Agent types, Simulation state, and Game Theory protocols.
 """
 
 import uuid
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field, validator
-
-# Constants
-
-DEFAULT_VOLATILITY = 0.3  # (0-1) (1.0 = Frequent stochastic shocks, 0.0 = Stable)
-DEFAULT_SHADOW_FUTURE = (
-    0.9  # (0-1) (High = values long-term cooperation over immediate gain)
-)
-DEFAULT_BATNA = (
-    0.5  # (0-1) (Plan B score: High = strong "walk-away" power, less desperate)
-)
+from pydantic import BaseModel, Field, field_validator
 
 # Key enums
 
@@ -59,7 +49,7 @@ class ShockType(str, Enum):
 class ScenarioConfig(BaseModel):
     """Configuration for the Global Context (User Input)."""
 
-    scenario_name: str = Field(..., example="Arctic Oil Rights 2030")
+    scenario_name: str = Field(examples=["Arctic Oil Rights 2030"])
     description: str = Field(
         ..., description="The context prompt injected into the Orchestrator"
     )
@@ -68,7 +58,7 @@ class ScenarioConfig(BaseModel):
         description="List of variables to settle, eg: ['tax_rate', 'land_percent']",
     )
     global_volatility: float = Field(
-        default=DEFAULT_VOLATILITY,
+        default=0.3,
         ge=0.0,
         le=1.0,
         description="0.0 = Stable negotiation; 1.0 = Frequent stochastic shocks",
@@ -105,7 +95,7 @@ class CognitiveParams(BaseModel):
 class UtilityGoal(BaseModel):
     """A single dimension of the agent's goal function (The Sliders)."""
 
-    topic: str = Field(..., example="Economic Growth")
+    topic: str = Field(examples=["Economic Growth"])
     weight: float = Field(
         ...,
         ge=0.0,
@@ -124,7 +114,7 @@ class AgentProfile(BaseModel):
     """
 
     agent_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str = Field(..., example="Norwegian Gov")
+    name: str = Field(examples=["Norwegian Gov"])
 
     # The Identity (Immutable-ish)
     archetype: IRArchetype = Field(
@@ -148,8 +138,9 @@ class AgentProfile(BaseModel):
         default=100.0, description="Currency spent to vote/speak"
     )
 
-    @validator("utility_goals")
-    def validate_weights(self, v: list[UtilityGoal]) -> list[UtilityGoal]:
+    @field_validator("utility_goals")
+    @classmethod
+    def validate_weights(cls, v: list[UtilityGoal]) -> list[UtilityGoal]:
         """Ensure agent has at least one goal."""
         if not v:
             raise ValueError("Agent must have at least one utility goal")
@@ -185,6 +176,16 @@ class NegotiationMove(BaseModel):
     )
     details: dict[str, str] = Field(..., description="Structured details of the move")
 
+    @field_validator("numeric_proposal")
+    @classmethod
+    def normalize_percentages(
+        cls, v: dict[str, float] | None
+    ) -> dict[str, float] | None:
+        """Normalize any >1.0 values to decimals (assume percentages)."""
+        if not v:
+            return v
+        return {k: (val / 100.0 if val > 1.0 else val) for k, val in v.items()}
+
 
 class DiplomaticMessage(BaseModel):
     """Output of the Speaking Phase.
@@ -202,13 +203,13 @@ class DiplomaticMessage(BaseModel):
     )
     game_move: NegotiationMove | None = None
 
-    tool_calls: list[str] | None = Field(  # incase used
-        None, description="List of tool names invoked by the agent"
+    tool_calls: list[str] | None = Field(
+        default=None, description="List of tool names invoked by the agent"
     )
 
     # Asymmetric Info Channel
     whisper_to: str | None = Field(
-        None, description="If set, only this agent sees the message"
+        default=None, description="If set, only this agent sees the message"
     )
 
 
@@ -231,8 +232,15 @@ class SimulationState(BaseModel):
     simulation_id: str
     current_epoch: int = 0
     global_tension: float = Field(default=0.5, description="0.0 = Utopia, 1.0 = War")
+    volatility: float = Field(
+        default=0.3, description="Probability of stochastic shocks"
+    )
     nash_product: float = Field(
         default=0.0, description="The joint utility score (maximise this)"
+    )
+    status: str = Field(
+        default="RUNNING",
+        description="Simulation lifecycle: RUNNING, CONSENSUS_REACHED",
     )
 
     current_treaty: TreatyState = Field(default_factory=TreatyState)
