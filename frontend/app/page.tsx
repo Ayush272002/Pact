@@ -1,7 +1,6 @@
-import React from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, BrainCircuit, Users2, Activity, ChevronRight } from "lucide-react";
+import { Search, BrainCircuit, Users2, Activity } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export default function LandingPage() {
