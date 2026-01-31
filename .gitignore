@@ -1,0 +1,4 @@
+.DS_Store
+.next/
+.pnpm-store/
+node_modules/
