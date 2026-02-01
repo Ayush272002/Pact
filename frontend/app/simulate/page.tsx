@@ -8,20 +8,37 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Plus, Globe2, Zap, X, Trash2, Loader2, Sparkles } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Plus,
+  Globe2,
+  Zap,
+  X,
+  Trash2,
+  Loader2,
+  Sparkles,
+  Info,
+} from "lucide-react";
 
 /** Base URL for the backend API. */
-const API_BASE_URL = "http://localhost:8000/api";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api";
 
 /** Demo scenario preset -- "Arctic Oil Treaty 2030". */
 const DEMO_SCENARIO = {
-  description: "Three Arctic nations must negotiate drilling rights, environmental protections, and revenue sharing for a newly discovered oil field in disputed waters. Rising tensions and climate concerns add urgency to reaching a sustainable agreement.",
+  description:
+    "Three Arctic nations must negotiate drilling rights, environmental protections, and revenue sharing for a newly discovered oil field in disputed waters. Rising tensions and climate concerns add urgency to reaching a sustainable agreement.",
   volatility: 0.4,
   parties: [
     {
       id: "demo-norway",
       name: "Norwegian Delegation",
-      description: "A wealthy Nordic nation prioritising environmental standards whilst seeking economic benefits from Arctic resources.",
+      description:
+        "A wealthy Nordic nation prioritising environmental standards whilst seeking economic benefits from Arctic resources.",
       goals: [
         { text: "Secure 40% revenue share from oil extraction", priority: 8 },
         { text: "Establish binding environmental protections", priority: 9 },
@@ -34,10 +51,14 @@ const DEMO_SCENARIO = {
     {
       id: "demo-russia",
       name: "Russian Federation",
-      description: "A major energy power seeking to expand Arctic influence and maximise extraction capacity.",
+      description:
+        "A major energy power seeking to expand Arctic influence and maximise extraction capacity.",
       goals: [
         { text: "Gain majority control of extraction operations", priority: 9 },
-        { text: "Minimise environmental restrictions on drilling", priority: 7 },
+        {
+          text: "Minimise environmental restrictions on drilling",
+          priority: 7,
+        },
       ],
       constraints: [
         { text: "Will not accept third-party oversight", priority: 8 },
@@ -47,7 +68,8 @@ const DEMO_SCENARIO = {
     {
       id: "demo-canada",
       name: "Canadian Government",
-      description: "Balancing indigenous rights, environmental concerns, and economic development in the North.",
+      description:
+        "Balancing indigenous rights, environmental concerns, and economic development in the North.",
       goals: [
         { text: "Protect indigenous land and fishing rights", priority: 10 },
         { text: "Secure infrastructure investment commitments", priority: 6 },
@@ -83,7 +105,7 @@ export default function SimulatePage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [scenario, setScenario] = useState("");
-  const [volatility, setVolatility] = useState(0.3);  // Global volatility scalar (0.0--1.0)
+  const [volatility, setVolatility] = useState(0.3); // Global volatility scalar (0.0--1.0)
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [parties, setParties] = useState<Party[]>([
     {
@@ -262,9 +284,12 @@ export default function SimulatePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scenario_name: scenario.slice(0, 50),  // Use first 50 chars as name
+          scenario_name: scenario.slice(0, 50), // Use first 50 chars as name
           description: scenario,
-          negotiation_issues: negotiationIssues.length > 0 ? negotiationIssues : ["general_agreement"],
+          negotiation_issues:
+            negotiationIssues.length > 0
+              ? negotiationIssues
+              : ["general_agreement"],
           global_volatility: volatility,
           max_epochs: 10,
         }),
@@ -279,12 +304,14 @@ export default function SimulatePage() {
 
       // Navigate to visualisation page with the simulation ID
       router.push(`/vis?id=${data.simulation_id}`);
-    }
-    catch (error) {
+    } catch (error) {
       console.error("Failed to initialise simulation:", error);
-      alert(error instanceof Error ? error.message : "Failed to connect to backend. Ensure the server is running.");
-    }
-    finally {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to connect to backend. Ensure the server is running.",
+      );
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -334,25 +361,13 @@ export default function SimulatePage() {
             <span className="text-zinc-200 border-b border-indigo-500 pb-1">
               Simulator
             </span>
-            <span className="hover:text-zinc-300 transition-colors cursor-pointer">
-              Protocol
-            </span>
-            <span className="hover:text-zinc-300 transition-colors cursor-pointer">
-              Ledger
-            </span>
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
-          <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-400 font-bold">
-            System Online
-          </span>
         </div>
       </nav>
 
-      <main className="max-w-4xl mx-auto px-6 py-20">
+      <main className="px-6 py-20">
         <div className="space-y-24">
-          <section className="space-y-4">
+          <section className="space-y-4 max-w-4xl mx-auto">
             <div className="flex items-center gap-3 text-indigo-400 mb-6">
               <Zap size={14} />
               <span className="text-[12px] uppercase tracking-[0.3em] font-black">
@@ -361,13 +376,13 @@ export default function SimulatePage() {
             </div>
             <div className="flex items-end justify-between gap-4">
               <h1 className="text-5xl md:text-6xl font-light tracking-tight text-white leading-tight">
-                Initialize <span className="text-zinc-600 italic">Scenario.</span>
+                Initialise{" "}
+                <span className="text-zinc-600 italic">Scenario.</span>
               </h1>
               <button
                 onClick={loadDemoScenario}
                 className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-full text-[11px] uppercase tracking-widest font-bold hover:bg-amber-500/20 transition-colors whitespace-nowrap"
               >
-                <Sparkles size={14} />
                 Load Demo
               </button>
             </div>
@@ -379,8 +394,8 @@ export default function SimulatePage() {
                 value={scenario}
                 onChange={(e) => setScenario(e.target.value)}
                 placeholder="Define the conflict landscape..."
-                className="w-full bg-transparent border-b border-white/10 py-4 text-2xl font-light focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-zinc-900 resize-none overflow-hidden"
-                rows={1}
+                className="w-full bg-transparent border border-white/10 py-4 px-4 text-2xl font-light focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-zinc-900 resize-none overflow-y-auto rounded-lg"
+                rows={5}
               />
             </div>
 
@@ -395,7 +410,8 @@ export default function SimulatePage() {
                 </span>
               </div>
               <p className="text-[11px] text-zinc-600 -mt-2">
-                Controls probability of stochastic shocks (0% = stable, 100% = chaotic)
+                Controls probability of stochastic shocks (0% = stable, 100% =
+                chaotic)
               </p>
               <input
                 type="range"
@@ -409,29 +425,41 @@ export default function SimulatePage() {
             </div>
           </section>
 
-          <section className="space-y-12">
-            <div className="flex items-end justify-between border-b border-white/5 pb-4">
-              <h2 className="text-[13px] uppercase tracking-[0.2em] text-zinc-400 font-bold">
-                Participating Agents
-              </h2>
+          <section className="space-y-12 max-w-full">
+            <div className="flex items-end justify-between border-b border-white/5 pb-4 max-w-7xl mx-auto">
+              <div className="flex items-center gap-2">
+                <h2 className="text-[13px] uppercase tracking-[0.2em] text-zinc-400 font-bold">
+                  Participating Parties
+                </h2>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button className="text-zinc-600 hover:text-zinc-400 transition-colors">
+                      <Info size={14} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-zinc-900 border-zinc-800 text-zinc-200 text-xs max-w-xs">
+                    <p>A party is represented by an agent in the simulation</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Button
                 onClick={addParty}
                 variant="ghost"
                 className="text-[11px] uppercase tracking-widest hover:bg-white/5 text-indigo-400 h-8 font-bold"
               >
-                <Plus className="mr-2 h-3 w-3" /> New Agent
+                <Plus className="mr-2 h-3 w-3" /> New Party
               </Button>
             </div>
 
-            <div className="grid gap-16">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
               {parties.map((party, idx) => (
                 <div
                   key={party.id}
-                  className="group relative bg-[#080808] border border-white/5 p-10 rounded-2xl hover:border-white/10 transition-all duration-500 shadow-xl"
+                  className="group relative bg-[#080808] border border-white/5 p-8 rounded-2xl hover:border-white/10 transition-all duration-500 shadow-xl"
                 >
                   <div className="absolute -top-3 left-10 bg-[#030303] px-4 py-1 border border-white/10 rounded-full">
                     <span className="text-[11px] uppercase tracking-[0.1em] font-bold text-zinc-500">
-                      Agent 0{idx + 1}
+                      Party 0{idx + 1}
                     </span>
                   </div>
 
@@ -442,8 +470,8 @@ export default function SimulatePage() {
                         onChange={(e) =>
                           updateParty(party.id, "name", e.target.value)
                         }
-                        placeholder="AGENT_NAME"
-                        className="bg-transparent text-3xl font-light tracking-tight focus:outline-none placeholder:text-zinc-900 w-full"
+                        placeholder="PARTY_NAME"
+                        className="bg-transparent text-3xl font-light tracking-tight focus:outline-none placeholder:text-zinc-900 w-full break-words"
                       />
                       {parties.length > 1 && (
                         <button
@@ -470,7 +498,7 @@ export default function SimulatePage() {
                       />
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-16">
+                    <div className="space-y-8">
                       {/* Goals */}
                       <div className="space-y-6">
                         <div className="flex justify-between items-center border-b border-white/5 pb-2">
@@ -489,7 +517,7 @@ export default function SimulatePage() {
                             <div key={i} className="space-y-3">
                               <div className="flex items-center justify-between gap-2">
                                 <input
-                                  className="flex-1 bg-transparent text-sm text-zinc-200 focus:outline-none placeholder:text-zinc-900"
+                                  className="flex-1 bg-transparent text-sm text-zinc-200 focus:outline-none placeholder:text-zinc-900 break-words overflow-hidden text-ellipsis"
                                   placeholder="Goal..."
                                   value={g.text}
                                   onChange={(e) =>
@@ -547,7 +575,7 @@ export default function SimulatePage() {
                             <div key={i} className="space-y-3">
                               <div className="flex items-center justify-between gap-2">
                                 <input
-                                  className="flex-1 bg-transparent text-sm text-zinc-200 focus:outline-none placeholder:text-zinc-900"
+                                  className="flex-1 bg-transparent text-sm text-zinc-200 focus:outline-none placeholder:text-zinc-900 break-words overflow-hidden text-ellipsis"
                                   placeholder="Limit..."
                                   value={c.text}
                                   onChange={(e) =>
@@ -599,13 +627,13 @@ export default function SimulatePage() {
             </div>
           </section>
 
-          <footer className="flex flex-col items-center py-24 border-t border-white/5">
+          <footer className="flex flex-col items-center py-24 border-t border-white/5 max-w-4xl mx-auto">
             <button
               onClick={handleInitialiseSwarm}
               disabled={isSubmitting}
               className="group relative px-14 py-5 overflow-hidden rounded-full bg-white text-black font-bold transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              <span className="relative z-10 flex items-center gap-3 uppercase text-[12px] tracking-[0.2em]">
+              <span className="relative z-10 flex items-center gap-3 uppercase text-[12px] tracking-[0.2em] cursor-pointer">
                 {isSubmitting ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
@@ -620,7 +648,7 @@ export default function SimulatePage() {
               <div className="absolute inset-0 bg-indigo-500 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
             </button>
             <p className="mt-10 text-[10px] uppercase tracking-[0.4em] text-zinc-700 font-bold">
-              Convergent Intelligence Protocol // v1.0.4
+              Convergent Intelligence Protocol
             </p>
           </footer>
         </div>
