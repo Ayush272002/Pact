@@ -951,7 +951,7 @@ export default function NexusPage() {
 
         {/* Draft State Widget -- Shows real treaty values from backend */}
         {Object.keys(treatyValues).length > 0 && (
-          <div className="absolute bottom-20 left-8 z-10 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 rounded-lg p-4 min-w-50 font-mono">
+          <div className="absolute bottom-8 left-8 z-10 bg-zinc-900/70 backdrop-blur-md border border-zinc-700/50 rounded-lg p-4 min-w-50 font-mono shadow-xl">
             <div className="text-zinc-400 border-b border-zinc-700 mb-3 pb-2 text-[10px] uppercase tracking-widest">
               Current Draft Terms
             </div>
@@ -976,7 +976,7 @@ export default function NexusPage() {
         )}
 
         {/* Graph Legend */}
-        <div className="absolute bottom-16 right-8 z-10 bg-zinc-900/80 backdrop-blur-sm border border-white/10 rounded-lg p-3 space-y-2">
+        <div className="absolute bottom-8 right-8 z-10 bg-zinc-900/70 backdrop-blur-md border border-white/10 rounded-lg p-3 space-y-2 shadow-xl">
           <p className="text-[9px] uppercase tracking-widest text-zinc-500 mb-2">
             Legend
           </p>
