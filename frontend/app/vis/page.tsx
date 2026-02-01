@@ -408,7 +408,7 @@ export default function NexusPage() {
 
     // Force Simulation -- tighter spacing for better visual density
     const nodeCount = nodesCopy.length;
-    const linkDistance = nodeCount <= 3 ? 140 : nodeCount <= 5 ? 110 : 80;
+    const linkDistance = nodeCount <= 3 ? 350 : nodeCount <= 5 ? 300 : 200;
 
     const simulation = d3
       .forceSimulation<AgentNode>(nodesCopy)
