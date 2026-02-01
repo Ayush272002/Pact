@@ -209,7 +209,7 @@ class DiplomaticMessage(BaseModel):
 
     agent_id: str
     epoch: int
-    content: str = Field(..., description="The actual dialogue text")
+    content: str = Field(..., description="The actual dialogue text (max 300 chars)")
 
     # Meta-Data for Visualisation
     sentiment_delta: float = Field(

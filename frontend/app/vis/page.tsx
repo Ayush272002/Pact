@@ -31,10 +31,19 @@ const API_BASE_URL = "http://localhost:8000/api";
 function highlightNegotiationTerms(text: string): React.ReactNode {
   // Regex patterns for negotiation-relevant terms
   const patterns = [
-    { regex: /(\d+(?:\.\d+)?%)/g, className: "text-indigo-400 font-semibold" },  // Percentages
-    { regex: /(\$[\d,]+(?:\.\d+)?[BMK]?)/gi, className: "text-emerald-400 font-semibold" },  // Currency
-    { regex: /(\d+(?:\.\d+)?°[CF])/g, className: "text-amber-400 font-semibold" },  // Temperatures
-    { regex: /(\d+(?:\.\d+)?\s*(?:billion|million|trillion))/gi, className: "text-emerald-400 font-semibold" },  // Large numbers
+    { regex: /(\d+(?:\.\d+)?%)/g, className: "text-indigo-400 font-semibold" }, // Percentages
+    {
+      regex: /(\$[\d,]+(?:\.\d+)?[BMK]?)/gi,
+      className: "text-emerald-400 font-semibold",
+    }, // Currency
+    {
+      regex: /(\d+(?:\.\d+)?°[CF])/g,
+      className: "text-amber-400 font-semibold",
+    }, // Temperatures
+    {
+      regex: /(\d+(?:\.\d+)?\s*(?:billion|million|trillion))/gi,
+      className: "text-emerald-400 font-semibold",
+    }, // Large numbers
   ];
 
   // Split text into parts and highlight matches
@@ -52,7 +61,7 @@ function highlightNegotiationTerms(text: string): React.ReactNode {
       for (let i = 0; i < splitParts.length; i++) {
         if (splitParts[i]) {
           const isMatch = regex.test(splitParts[i]);
-          regex.lastIndex = 0;  // Reset regex state
+          regex.lastIndex = 0; // Reset regex state
           newParts.push({
             text: splitParts[i],
             className: isMatch ? className : undefined,
@@ -67,10 +76,12 @@ function highlightNegotiationTerms(text: string): React.ReactNode {
     <>
       {parts.map((part, i) =>
         part.className ? (
-          <span key={i} className={part.className}>{part.text}</span>
+          <span key={i} className={part.className}>
+            {part.text}
+          </span>
         ) : (
           <span key={i}>{part.text}</span>
-        )
+        ),
       )}
     </>
   );
@@ -84,7 +95,14 @@ function formatTreatyValue(value: number, key: string): string {
   // Boolean-like values (0 or 1)
   if (value === 0 || value === 1) {
     // Check if key suggests it's a boolean (contains 'binding', 'veto', 'authority', 'enabled')
-    const boolKeys = ["binding", "veto", "authority", "enabled", "required", "mandatory"];
+    const boolKeys = [
+      "binding",
+      "veto",
+      "authority",
+      "enabled",
+      "required",
+      "mandatory",
+    ];
     if (boolKeys.some((k) => key.toLowerCase().includes(k))) {
       return value === 1 ? "YES" : "NO";
     }
@@ -113,7 +131,11 @@ function formatTreatyValue(value: number, key: string): string {
  * Renders a mini sparkline chart for trend visualisation.
  * Uses pure SVG for lightweight rendering.
  */
-function Sparkline({ data, width = 60, height = 20 }: {
+function Sparkline({
+  data,
+  width = 60,
+  height = 20,
+}: {
   data: number[];
   width?: number;
   height?: number;
@@ -124,14 +146,17 @@ function Sparkline({ data, width = 60, height = 20 }: {
   const max = Math.max(...data);
   const range = max - min || 1;
 
-  const points = data.map((value, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((value - min) / range) * height;
-    return `${x},${y}`;
-  }).join(" ");
+  const points = data
+    .map((value, i) => {
+      const x = (i / (data.length - 1)) * width;
+      const y = height - ((value - min) / range) * height;
+      return `${x},${y}`;
+    })
+    .join(" ");
 
   const trend = data[data.length - 1] - data[0];
-  const strokeColour = trend > 0 ? "#22c55e" : trend < 0 ? "#ef4444" : "#6366f1";
+  const strokeColour =
+    trend > 0 ? "#22c55e" : trend < 0 ? "#ef4444" : "#6366f1";
 
   return (
     <svg width={width} height={height} className="opacity-70">
@@ -145,7 +170,7 @@ function Sparkline({ data, width = 60, height = 20 }: {
       />
       {/* End dot */}
       <circle
-        cx={(data.length - 1) / (data.length - 1) * width}
+        cx={((data.length - 1) / (data.length - 1)) * width}
         cy={height - ((data[data.length - 1] - min) / range) * height}
         r="2"
         fill={strokeColour}
@@ -159,10 +184,10 @@ interface AgentNode extends d3.SimulationNodeDatum {
   id: string;
   name: string;
   group: string;
-  val: number;  // Influence weight for node size
-  sentiment: number;  // -1 (conflict) to 1 (consensus)
-  politicalCapital: number;  // 0-100, agent's negotiating power
-  privateMandate?: string;  // Hidden agenda (God Mode only)
+  val: number; // Influence weight for node size
+  sentiment: number; // -1 (conflict) to 1 (consensus)
+  politicalCapital: number; // 0-100, agent's negotiating power
+  privateMandate?: string; // Hidden agenda (God Mode only)
 }
 
 /** Link type for D3 force simulation. */
@@ -193,13 +218,16 @@ interface SimulationState {
   nash_product: number;
   status: string;
   current_treaty: TreatyState;
-  agents: Record<string, {
-    agent_id: string;
-    name: string;
-    archetype: string;
-    private_mandate: string;
-    political_capital: number;
-  }>;
+  agents: Record<
+    string,
+    {
+      agent_id: string;
+      name: string;
+      archetype: string;
+      private_mandate: string;
+      political_capital: number;
+    }
+  >;
   chat_history: Array<{
     agent_id: string;
     epoch: number;
@@ -221,16 +249,21 @@ export default function NexusPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentEpoch, setCurrentEpoch] = useState(0);
+  const [isNextEpochLoading, setIsNextEpochLoading] = useState(false);
   const [globalTension, setGlobalTension] = useState(0.5);
   const [nashProduct, setNashProduct] = useState(0);
-  const [prevNashProduct, setPrevNashProduct] = useState(0);  // Track previous for delta
-  const [initialNashProduct, setInitialNashProduct] = useState<number | null>(null);  // Track starting value
-  const [nashHistory, setNashHistory] = useState<number[]>([]);  // History for sparkline
+  const [prevNashProduct, setPrevNashProduct] = useState(0); // Track previous for delta
+  const [initialNashProduct, setInitialNashProduct] = useState<number | null>(
+    null,
+  ); // Track starting value
+  const [nashHistory, setNashHistory] = useState<number[]>([]); // History for sparkline
   const [status, setStatus] = useState("INITIALISING");
-  const [lastSpeakingAgent, setLastSpeakingAgent] = useState<string | null>(null);  // For pulse animation
+  const [lastSpeakingAgent, setLastSpeakingAgent] = useState<string | null>(
+    null,
+  ); // For pulse animation
 
   // UI state
-  const [godMode, setGodMode] = useState(false);  // Toggle to reveal private mandates
+  const [godMode, setGodMode] = useState(false); // Toggle to reveal private mandates
 
   // Graph data
   const [nodes, setNodes] = useState<AgentNode[]>([]);
@@ -249,29 +282,35 @@ export default function NexusPage() {
     if (!simulationId) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/simulation/${simulationId}/state`);
+      const response = await fetch(
+        `${API_BASE_URL}/simulation/${simulationId}/state`,
+      );
       if (!response.ok) throw new Error("Failed to fetch simulation state");
 
       const data = await response.json();
       const state: SimulationState = data.state;
 
       // Transform agents to nodes
-      const agentNodes: AgentNode[] = Object.values(state.agents).map((agent, idx) => ({
-        id: agent.agent_id,
-        name: agent.name,
-        group: agent.archetype,
-        val: 15 + (agent.political_capital / 10),  // Size based on political capital
-        sentiment: 0,  // Will be updated from chat history
-        politicalCapital: agent.political_capital,
-        privateMandate: agent.private_mandate,
-      }));
+      const agentNodes: AgentNode[] = Object.values(state.agents).map(
+        (agent, idx) => ({
+          id: agent.agent_id,
+          name: agent.name,
+          group: agent.archetype,
+          val: 15 + agent.political_capital / 10, // Size based on political capital
+          sentiment: 0, // Will be updated from chat history
+          politicalCapital: agent.political_capital,
+          privateMandate: agent.private_mandate,
+        }),
+      );
 
       // Transform alliances to links
-      const allianceLinks: Link[] = state.active_alliances.map(([source, target, strength]) => ({
-        source: source as string,
-        target: target as string,
-        strength: strength as number,
-      }));
+      const allianceLinks: Link[] = state.active_alliances.map(
+        ([source, target, strength]) => ({
+          source: source as string,
+          target: target as string,
+          strength: strength as number,
+        }),
+      );
 
       // Transform chat history
       const messages: ChatMessage[] = state.chat_history.map((msg) => ({
@@ -296,8 +335,7 @@ export default function NexusPage() {
         setTreatyValues(state.current_treaty.issue_values);
       }
       setIsLoading(false);
-    }
-    catch (error) {
+    } catch (error) {
       console.error("Error fetching simulation state:", error);
       setIsLoading(false);
     }
@@ -310,7 +348,9 @@ export default function NexusPage() {
     if (!simulationId || eventSourceRef.current) return;
 
     setIsStreaming(true);
-    const eventSource = new EventSource(`${API_BASE_URL}/simulation/${simulationId}/stream`);
+    const eventSource = new EventSource(
+      `${API_BASE_URL}/simulation/${simulationId}/stream`,
+    );
     eventSourceRef.current = eventSource;
 
     eventSource.onmessage = (event) => {
@@ -321,59 +361,71 @@ export default function NexusPage() {
           // Update metrics with delta tracking
           setCurrentEpoch(data.epoch);
           setGlobalTension(data.global_tension);
-          setPrevNashProduct(nashProduct);  // Store previous before updating
+          setPrevNashProduct(nashProduct); // Store previous before updating
           setNashProduct(data.nash_product);
           // Set initial Nash Product on first meaningful value
-          setInitialNashProduct((prev) => 
-            prev === null && data.nash_product > 0 ? data.nash_product : prev
+          setInitialNashProduct((prev) =>
+            prev === null && data.nash_product > 0 ? data.nash_product : prev,
           );
-          setNashHistory((prev) => [...prev.slice(-9), data.nash_product]);  // Keep last 10 for sparkline
-          setLastSpeakingAgent(data.agent_id);  // Trigger pulse animation
-          setTimeout(() => setLastSpeakingAgent(null), 1500);  // Clear after animation
+          setNashHistory((prev) => [...prev.slice(-9), data.nash_product]); // Keep last 10 for sparkline
+          setLastSpeakingAgent(data.agent_id); // Trigger pulse animation
+          setTimeout(() => setLastSpeakingAgent(null), 1500); // Clear after animation
 
           // Add message to chat history
-          setChatHistory((prev) => [...prev, {
-            agentId: data.agent_id,
-            epoch: data.epoch,
-            content: data.content,
-            sentimentDelta: data.sentiment_delta,
-          }]);
+          setChatHistory((prev) => [
+            ...prev,
+            {
+              agentId: data.agent_id,
+              epoch: data.epoch,
+              content: data.content,
+              sentimentDelta: data.sentiment_delta,
+            },
+          ]);
 
           // Update node sentiment and political capital
-          setNodes((prev) => prev.map((node) => {
-            const newCapital = data.agent_capitals?.[node.id] ?? node.politicalCapital;
-            return {
-              ...node,
-              sentiment: node.id === data.agent_id
-                ? Math.max(-1, Math.min(1, node.sentiment + data.sentiment_delta))
-                : node.sentiment,
-              politicalCapital: newCapital,
-              val: 15 + (newCapital / 10),  // Update node size based on capital
-            };
-          }));
+          setNodes((prev) =>
+            prev.map((node) => {
+              const newCapital =
+                data.agent_capitals?.[node.id] ?? node.politicalCapital;
+              return {
+                ...node,
+                sentiment:
+                  node.id === data.agent_id
+                    ? Math.max(
+                        -1,
+                        Math.min(1, node.sentiment + data.sentiment_delta),
+                      )
+                    : node.sentiment,
+                politicalCapital: newCapital,
+                val: 15 + newCapital / 10, // Update node size based on capital
+              };
+            }),
+          );
 
           // Update treaty values
-          if (data.treaty_values && Object.keys(data.treaty_values).length > 0) {
+          if (
+            data.treaty_values &&
+            Object.keys(data.treaty_values).length > 0
+          ) {
             setTreatyValues(data.treaty_values);
           }
-        }
-        else if (data.type === "coalitions_detected") {
+        } else if (data.type === "coalitions_detected") {
           // Update alliances/links
-          const newLinks: Link[] = data.alliances.map(([source, target, strength]: [string, string, number]) => ({
-            source,
-            target,
-            strength,
-          }));
+          const newLinks: Link[] = data.alliances.map(
+            ([source, target, strength]: [string, string, number]) => ({
+              source,
+              target,
+              strength,
+            }),
+          );
           setLinks(newLinks);
-        }
-        else if (data.type === "simulation_complete") {
+        } else if (data.type === "simulation_complete") {
           setStatus("COMPLETE");
           setIsStreaming(false);
           eventSource.close();
           eventSourceRef.current = null;
         }
-      }
-      catch (err) {
+      } catch (err) {
         console.error("Error parsing SSE data:", err);
       }
     };
@@ -392,16 +444,21 @@ export default function NexusPage() {
     if (!simulationId) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/simulation/${simulationId}/step`, {
-        method: "POST",
-      });
+      setIsNextEpochLoading(true);
+      const response = await fetch(
+        `${API_BASE_URL}/simulation/${simulationId}/step`,
+        {
+          method: "POST",
+        },
+      );
       if (!response.ok) throw new Error("Failed to step simulation");
+      setIsNextEpochLoading(false);
 
       // Refresh state after step
       await fetchSimulationState();
-    }
-    catch (error) {
+    } catch (error) {
       console.error("Error stepping simulation:", error);
+      setIsNextEpochLoading(false);
     }
   };
 
@@ -446,7 +503,7 @@ export default function NexusPage() {
 
     // Force Simulation -- tighter spacing for better visual density
     const nodeCount = nodesCopy.length;
-    const linkDistance = nodeCount <= 3 ? 140 : nodeCount <= 5 ? 110 : 80;
+    const linkDistance = nodeCount <= 3 ? 350 : nodeCount <= 5 ? 300 : 200;
 
     const simulation = d3
       .forceSimulation<AgentNode>(nodesCopy)
@@ -462,7 +519,7 @@ export default function NexusPage() {
       .force("center", d3.forceCenter(width / 2, height / 2))
       .force(
         "collision",
-        d3.forceCollide().radius((d: AgentNode) => d.val + 15),
+        d3.forceCollide<AgentNode>().radius((d) => d.val + 15),
       )
       .force("x", d3.forceX(width / 2).strength(0.05))
       .force("y", d3.forceY(height / 2).strength(0.05));
@@ -473,14 +530,14 @@ export default function NexusPage() {
       .selectAll("line")
       .data(linksCopy)
       .join("line")
-      .attr("stroke", (d) => d.strength > 0.5 ? "#22c55e" : "#ef4444")
+      .attr("stroke", (d) => (d.strength > 0.5 ? "#22c55e" : "#ef4444"))
       .attr("stroke-opacity", 0.6)
       .attr("stroke-width", (d) => Math.max(1, d.strength * 4));
 
     // Draw Nodes
     const node = svg
       .append("g")
-      .selectAll("g")
+      .selectAll<SVGGElement, AgentNode>("g")
       .data(nodesCopy)
       .join("g")
       .call(
@@ -497,40 +554,50 @@ export default function NexusPage() {
       .attr("r", (d) => d.val)
       .attr("fill", (d) =>
         speakingAgentId === d.id
-          ? "rgba(99, 102, 241, 0.15)"  // Indigo glow when speaking
+          ? "rgba(99, 102, 241, 0.15)" // Indigo glow when speaking
           : d.sentiment > 0.2
             ? "rgba(34, 197, 94, 0.1)"
             : d.sentiment < -0.2
               ? "rgba(239, 68, 68, 0.1)"
-              : "rgba(245, 158, 11, 0.08)"
+              : "rgba(245, 158, 11, 0.08)",
       )
       .attr("stroke", (d) =>
         speakingAgentId === d.id
-          ? "#6366f1"  // Indigo when speaking
+          ? "#6366f1" // Indigo when speaking
           : d.sentiment > 0.2
             ? "#22c55e"
             : d.sentiment < -0.2
               ? "#ef4444"
-              : "#f59e0b"
+              : "#f59e0b",
       )
-      .attr("stroke-width", (d) => speakingAgentId === d.id ? 3 : 2)
+      .attr("stroke-width", (d) => (speakingAgentId === d.id ? 3 : 2))
       .style("transition", "all 0.3s ease-out");
 
-    // Labels -- show agent name with background for readability
+    // Labels -- show agent name with background for readability, using foreignObject for text wrapping
     node
-      .append("text")
-      .text((d) => d.name || d.id)
-      .attr("fill", "#e4e4e7")
-      .attr("font-size", "11px")
-      .attr("font-weight", "500")
-      .attr("dy", (d) => d.val + 22)
-      .attr("text-anchor", "middle")
-      .attr("class", "uppercase")
-      .attr("paint-order", "stroke")
-      .attr("stroke", "#09090b")
-      .attr("stroke-width", "3px")
-      .attr("stroke-linecap", "round")
-      .attr("stroke-linejoin", "round");
+      .append("foreignObject")
+      .attr("width", 120)
+      .attr("height", 60)
+      .attr("x", -60)
+      .attr("y", (d) => d.val + 12)
+      .append("xhtml:div")
+      .style("display", "flex")
+      .style("justify-content", "center")
+      .style("align-items", "flex-start")
+      .style("width", "100%")
+      .style("height", "100%")
+      .style("text-align", "center")
+      .style("word-wrap", "break-word")
+      .style("overflow-wrap", "break-word")
+      .style("hyphens", "auto")
+      .append("xhtml:span")
+      .style("color", "#e4e4e7")
+      .style("font-size", "13px")
+      .style("font-weight", "500")
+      .style("text-transform", "uppercase")
+      .style("text-shadow", "0 0 3px #09090b, 0 0 3px #09090b, 0 0 3px #09090b")
+      .style("line-height", "1.2")
+      .text((d) => d.name || d.id);
 
     simulation.on("tick", () => {
       link
@@ -542,7 +609,9 @@ export default function NexusPage() {
       node.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
     });
 
-    function dragstarted(event: d3.D3DragEvent<SVGGElement, AgentNode, AgentNode>) {
+    function dragstarted(
+      event: d3.D3DragEvent<SVGGElement, AgentNode, AgentNode>,
+    ) {
       if (!event.active) simulation.alphaTarget(0.3).restart();
       event.subject.fx = event.subject.x;
       event.subject.fy = event.subject.y;
@@ -551,7 +620,9 @@ export default function NexusPage() {
       event.subject.fx = event.x;
       event.subject.fy = event.y;
     }
-    function dragended(event: d3.D3DragEvent<SVGGElement, AgentNode, AgentNode>) {
+    function dragended(
+      event: d3.D3DragEvent<SVGGElement, AgentNode, AgentNode>,
+    ) {
       if (!event.active) simulation.alphaTarget(0);
       event.subject.fx = null;
       event.subject.fy = null;
@@ -577,16 +648,20 @@ export default function NexusPage() {
   }
 
   return (
-    <div className={`flex h-screen bg-[#030303] text-white overflow-hidden font-sans transition-all ${
-      godMode ? "ring-1 ring-inset ring-amber-500/30" : ""
-    }`}>
+    <div
+      className={`flex h-screen bg-[#030303] text-white overflow-hidden font-sans transition-all ${
+        godMode ? "ring-1 ring-inset ring-amber-500/30" : ""
+      }`}
+    >
       {/* LEFT SIDEBAR: Controls & Diplomatic Feed */}
-      <aside className="w-80 border-r border-white/5 flex flex-col bg-zinc-950/50 backdrop-blur-xl">
+      <aside className="w-1/3 border-r border-white/5 flex flex-col bg-zinc-950/50 backdrop-blur-xl">
         <div className="p-6 border-b border-white/5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold tracking-widest uppercase">Pact</h2>
+                <h2 className="text-lg font-bold tracking-widest uppercase">
+                  Pact
+                </h2>
                 {isStreaming && (
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 )}
@@ -627,19 +702,39 @@ export default function NexusPage() {
                   size="sm"
                   className="bg-white text-black text-xs hover:bg-zinc-200"
                   onClick={stepSimulation}
-                  disabled={status === "COMPLETE" || status === "DEADLOCK" || status === "CONSENSUS_REACHED"}
+                  disabled={
+                    status === "COMPLETE" ||
+                    status === "DEADLOCK" ||
+                    status === "CONSENSUS_REACHED" ||
+                    isNextEpochLoading
+                  }
                 >
-                  Next Epoch
+                  {isNextEpochLoading ? (
+                    <Loader2 size={12} className="mr-1 animate-spin" />
+                  ) : (
+                    "Next Epoch"
+                  )}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   className="text-xs border-white/10 hover:bg-white/5"
                   onClick={startStream}
-                  disabled={status === "COMPLETE" || status === "DEADLOCK" || status === "CONSENSUS_REACHED"}
+                  disabled={
+                    status === "COMPLETE" ||
+                    status === "DEADLOCK" ||
+                    status === "CONSENSUS_REACHED" ||
+                    isNextEpochLoading
+                  }
                 >
-                  <Play size={12} className="mr-1" />
-                  Auto-run
+                  {isNextEpochLoading ? (
+                    <Loader2 size={12} className="mr-1 animate-spin" />
+                  ) : (
+                    <>
+                      <Play size={12} className="mr-1" />
+                      Auto-run
+                    </>
+                  )}
                 </Button>
               </>
             ) : (
@@ -665,7 +760,9 @@ export default function NexusPage() {
                   : "bg-zinc-800/50 text-zinc-500 hover:bg-zinc-800"
               }`}
             >
-              <span className="text-[10px] uppercase tracking-widest">God Mode</span>
+              <span className="text-[10px] uppercase tracking-widest">
+                God Mode
+              </span>
               {godMode ? <Eye size={14} /> : <EyeOff size={14} />}
             </button>
             {godMode && (
@@ -684,60 +781,65 @@ export default function NexusPage() {
             {chatHistory.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-sm text-zinc-600">No messages yet</p>
-                <p className="text-xs text-zinc-700 mt-1">Start the simulation to see agent communications</p>
+                <p className="text-xs text-zinc-700 mt-1">
+                  Start the simulation to see agent communications
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {chatHistory.slice(-15).reverse().map((msg, i) => {
-                  // Find the agent name from nodes
-                  const agentNode = nodes.find((n) => n.id === msg.agentId);
-                  const agentName = agentNode?.name || msg.agentId.slice(0, 8);
+                {chatHistory
+                  .slice(-15)
+                  .reverse()
+                  .map((msg, i) => {
+                    // Find the agent name from nodes
+                    const agentNode = nodes.find((n) => n.id === msg.agentId);
+                    const agentName =
+                      agentNode?.name || msg.agentId.slice(0, 8);
 
-                  return (
-                    <div
-                      key={i}
-                      className="flex gap-0 group"
-                    >
-                      {/* Sentiment indicator bar */}
-                      <div
-                        className={`w-1 rounded-l-lg shrink-0 transition-all ${
-                          msg.sentimentDelta > 0
-                            ? "bg-emerald-500"
-                            : msg.sentimentDelta < 0
-                              ? "bg-red-500"
-                              : "bg-zinc-700"
-                        }`}
-                      />
-                      <div
-                        className={`flex-1 p-3 rounded-r-lg border-y border-r transition-all group-hover:border-white/10 ${
-                          msg.sentimentDelta > 0
-                            ? "border-emerald-500/20 bg-emerald-500/5"
-                            : msg.sentimentDelta < 0
-                              ? "border-red-500/20 bg-red-500/5"
-                              : "border-zinc-700/50 bg-zinc-800/30"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className={`text-xs font-medium ${
+                    return (
+                      <div key={i} className="flex gap-0 group">
+                        {/* Sentiment indicator bar */}
+                        <div
+                          className={`w-1 rounded-l-lg shrink-0 transition-all ${
                             msg.sentimentDelta > 0
-                              ? "text-emerald-400"
+                              ? "bg-emerald-500"
                               : msg.sentimentDelta < 0
-                                ? "text-red-400"
-                                : "text-zinc-300"
-                          }`}>
-                            {agentName}
-                          </span>
-                          <span className="text-[10px] text-zinc-600 font-mono">
-                            E{msg.epoch.toString().padStart(2, "0")}
-                          </span>
+                                ? "bg-red-500"
+                                : "bg-zinc-700"
+                          }`}
+                        />
+                        <div
+                          className={`flex-1 p-3 rounded-r-lg border-y border-r transition-all group-hover:border-white/10 ${
+                            msg.sentimentDelta > 0
+                              ? "border-emerald-500/20 bg-emerald-500/5"
+                              : msg.sentimentDelta < 0
+                                ? "border-red-500/20 bg-red-500/5"
+                                : "border-zinc-700/50 bg-zinc-800/30"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span
+                              className={`text-xs font-medium ${
+                                msg.sentimentDelta > 0
+                                  ? "text-emerald-400"
+                                  : msg.sentimentDelta < 0
+                                    ? "text-red-400"
+                                    : "text-zinc-300"
+                              }`}
+                            >
+                              {agentName}
+                            </span>
+                            <span className="text-[10px] text-zinc-600 font-mono">
+                              E{msg.epoch.toString().padStart(2, "0")}
+                            </span>
+                          </div>
+                          <p className="text-sm text-zinc-300 leading-relaxed">
+                            {highlightNegotiationTerms(msg.content)}
+                          </p>
                         </div>
-                        <p className="text-sm text-zinc-300 leading-relaxed">
-                          {highlightNegotiationTerms(msg.content)}
-                        </p>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             )}
           </div>
@@ -752,13 +854,15 @@ export default function NexusPage() {
             <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">
               Global Tension
             </p>
-            <p className={`text-3xl font-light tracking-tighter font-mono ${
-              globalTension < 0.4
-                ? "text-emerald-400"
-                : globalTension < 0.7
-                  ? "text-amber-400"
-                  : "text-red-400"
-            }`}>
+            <p
+              className={`text-3xl font-light tracking-tighter font-mono ${
+                globalTension < 0.4
+                  ? "text-emerald-400"
+                  : globalTension < 0.7
+                    ? "text-amber-400"
+                    : "text-red-400"
+              }`}
+            >
               {(globalTension * 100).toFixed(0)}%
             </p>
           </div>
@@ -768,28 +872,34 @@ export default function NexusPage() {
             </p>
             <div className="flex items-center gap-3">
               <div className="flex items-baseline gap-2">
-                <p className={`text-3xl font-light tracking-tighter font-mono ${
-                  nashProduct > prevNashProduct && prevNashProduct > 0
-                    ? "text-emerald-400"
-                    : nashProduct < prevNashProduct
-                      ? "text-red-400"
-                      : "text-indigo-400"
-                }`}>
+                <p
+                  className={`text-3xl font-light tracking-tighter font-mono ${
+                    nashProduct > prevNashProduct && prevNashProduct > 0
+                      ? "text-emerald-400"
+                      : nashProduct < prevNashProduct
+                        ? "text-red-400"
+                        : "text-indigo-400"
+                  }`}
+                >
                   {nashProduct < 0.01 ? "0.00" : nashProduct.toFixed(2)}
                 </p>
                 {/* Show delta from initial value */}
-                {nashProduct >= 0.01 && initialNashProduct !== null && initialNashProduct > 0 && (
-                  <span className={`text-xs font-medium font-mono ${
-                    nashProduct > initialNashProduct
-                      ? "text-emerald-400"
-                      : nashProduct < initialNashProduct
-                        ? "text-red-400"
-                        : "text-zinc-500"
-                  }`}>
-                    ({nashProduct > initialNashProduct ? "+" : ""}
-                    {(nashProduct - initialNashProduct).toFixed(2)})
-                  </span>
-                )}
+                {nashProduct >= 0.01 &&
+                  initialNashProduct !== null &&
+                  initialNashProduct > 0 && (
+                    <span
+                      className={`text-xs font-medium font-mono ${
+                        nashProduct > initialNashProduct
+                          ? "text-emerald-400"
+                          : nashProduct < initialNashProduct
+                            ? "text-red-400"
+                            : "text-zinc-500"
+                      }`}
+                    >
+                      ({nashProduct > initialNashProduct ? "+" : ""}
+                      {(nashProduct - initialNashProduct).toFixed(2)})
+                    </span>
+                  )}
               </div>
               {nashHistory.length >= 2 && (
                 <Sparkline data={nashHistory} width={50} height={18} />
@@ -815,8 +925,8 @@ export default function NexusPage() {
         </div>
 
         {/* D3 Canvas with subtle grid background */}
-        <div 
-          ref={d3Container} 
+        <div
+          ref={d3Container}
           className="w-full h-full cursor-crosshair"
           style={{
             backgroundImage: `
@@ -835,7 +945,10 @@ export default function NexusPage() {
             </div>
             <div className="space-y-2">
               {Object.entries(treatyValues).map(([key, value]) => (
-                <div key={key} className="flex justify-between items-center text-xs">
+                <div
+                  key={key}
+                  className="flex justify-between items-center text-xs"
+                >
                   <span className="text-teal-400 capitalize">
                     {key.replace(/_/g, " ")}
                   </span>
@@ -850,7 +963,9 @@ export default function NexusPage() {
 
         {/* Graph Legend */}
         <div className="absolute bottom-16 right-8 z-10 bg-zinc-900/80 backdrop-blur-sm border border-white/10 rounded-lg p-3 space-y-2">
-          <p className="text-[9px] uppercase tracking-widest text-zinc-500 mb-2">Legend</p>
+          <p className="text-[9px] uppercase tracking-widest text-zinc-500 mb-2">
+            Legend
+          </p>
           <div className="flex items-center gap-2">
             <div className="w-4 h-0.5 bg-emerald-500 rounded" />
             <span className="text-[10px] text-zinc-400">Strong Agreement</span>
@@ -878,7 +993,9 @@ export default function NexusPage() {
           <div className="flex items-center gap-6 text-[10px] text-zinc-500">
             <span>ID: {simulationId?.slice(0, 8)}</span>
             <span className="flex items-center gap-1">
-              {isStreaming && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+              {isStreaming && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              )}
               {status}
             </span>
           </div>
@@ -886,7 +1003,7 @@ export default function NexusPage() {
       </main>
 
       {/* RIGHT SIDEBAR: Agent Insights */}
-      <aside className="w-80 border-l border-white/5 bg-zinc-950/20 hidden lg:flex flex-col">
+      <aside className="w-1/6 border-l border-white/5 bg-zinc-950/20 hidden lg:flex flex-col">
         <div className="p-5 border-b border-white/5">
           <h4 className="text-[10px] uppercase tracking-widest text-zinc-500 font-medium">
             Negotiating Parties
@@ -942,13 +1059,15 @@ export default function NexusPage() {
                       <span className="text-[9px] text-zinc-500 uppercase tracking-wider">
                         Political Capital
                       </span>
-                      <span className={`text-[11px] font-mono font-medium ${
-                        node.politicalCapital > 70
-                          ? "text-emerald-400"
-                          : node.politicalCapital > 30
-                            ? "text-amber-400"
-                            : "text-red-400"
-                      }`}>
+                      <span
+                        className={`text-[11px] font-mono font-medium ${
+                          node.politicalCapital > 70
+                            ? "text-emerald-400"
+                            : node.politicalCapital > 30
+                              ? "text-amber-400"
+                              : "text-red-400"
+                        }`}
+                      >
                         {node.politicalCapital}
                       </span>
                     </div>
