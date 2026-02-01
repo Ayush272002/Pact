@@ -478,21 +478,31 @@ export default function NexusPage() {
       .attr("stroke-width", (d) => speakingAgentId === d.id ? 3 : 2)
       .style("transition", "all 0.3s ease-out");
 
-    // Labels -- show agent name with background for readability
+    // Labels -- show agent name with background for readability, using foreignObject for text wrapping
     node
-      .append("text")
-      .text((d) => d.name || d.id)
-      .attr("fill", "#e4e4e7")
-      .attr("font-size", "11px")
-      .attr("font-weight", "500")
-      .attr("dy", (d) => d.val + 22)
-      .attr("text-anchor", "middle")
-      .attr("class", "uppercase")
-      .attr("paint-order", "stroke")
-      .attr("stroke", "#09090b")
-      .attr("stroke-width", "3px")
-      .attr("stroke-linecap", "round")
-      .attr("stroke-linejoin", "round");
+      .append("foreignObject")
+      .attr("width", 120)
+      .attr("height", 60)
+      .attr("x", -60)
+      .attr("y", (d) => d.val + 12)
+      .append("xhtml:div")
+      .style("display", "flex")
+      .style("justify-content", "center")
+      .style("align-items", "flex-start")
+      .style("width", "100%")
+      .style("height", "100%")
+      .style("text-align", "center")
+      .style("word-wrap", "break-word")
+      .style("overflow-wrap", "break-word")
+      .style("hyphens", "auto")
+      .append("xhtml:span")
+      .style("color", "#e4e4e7")
+      .style("font-size", "13px")
+      .style("font-weight", "500")
+      .style("text-transform", "uppercase")
+      .style("text-shadow", "0 0 3px #09090b, 0 0 3px #09090b, 0 0 3px #09090b")
+      .style("line-height", "1.2")
+      .text((d) => d.name || d.id);
 
     simulation.on("tick", () => {
       link
