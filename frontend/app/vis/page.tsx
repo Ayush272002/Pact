@@ -7,19 +7,12 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import * as d3 from "d3";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Activity,
-  Zap,
-  Eye,
-  EyeOff,
-  Play,
-  RotateCcw,
-  Loader2,
-} from "lucide-react";
+import { Eye, EyeOff, Play, Loader2, CheckCircle2, X } from "lucide-react";
 
 /** Base URL for the backend API. */
 const API_BASE_URL = "http://localhost:8000/api";
@@ -89,12 +82,13 @@ function highlightNegotiationTerms(text: string): React.ReactNode {
 
 /**
  * Formats a treaty value for display.
- * Handles percentages (0-1), large numbers, and booleans.
+ * Handles percentages (0-1), monetary values, and booleans.
  */
 function formatTreatyValue(value: number, key: string): string {
+  const keyLower = key.toLowerCase();
+
   // Boolean-like values (0 or 1)
   if (value === 0 || value === 1) {
-    // Check if key suggests it's a boolean (contains 'binding', 'veto', 'authority', 'enabled')
     const boolKeys = [
       "binding",
       "veto",
@@ -103,12 +97,29 @@ function formatTreatyValue(value: number, key: string): string {
       "required",
       "mandatory",
     ];
-    if (boolKeys.some((k) => key.toLowerCase().includes(k))) {
+    if (boolKeys.some((k) => keyLower.includes(k))) {
       return value === 1 ? "YES" : "NO";
     }
   }
 
-  // Large numbers (likely monetary values in raw form - convert to billions)
+  // Monetary values: keys containing investment/fund/budget/cost
+  const moneyKeys = [
+    "investment",
+    "fund",
+    "budget",
+    "cost",
+    "spending",
+    "capital",
+  ];
+  if (moneyKeys.some((k) => keyLower.includes(k))) {
+    // Assume value is in billions if small, raw if large
+    if (value > 1_000_000) {
+      return `$${(value / 1_000_000_000).toFixed(1)}B`;
+    }
+    return `$${value.toFixed(1)}B`;
+  }
+
+  // Large numbers (likely monetary values in raw form)
   if (value > 1_000_000) {
     return `$${(value / 1_000_000_000).toFixed(1)}B`;
   }
@@ -125,6 +136,40 @@ function formatTreatyValue(value: number, key: string): string {
 
   // Default: show as decimal
   return value.toFixed(1);
+}
+
+/**
+ * Cleans a treaty key for display.
+ * Removes verbose phrasing like "Secure X% of..." and extracts the core concept.
+ */
+function formatTreatyKey(key: string): string {
+  let cleaned = key.replace(/_/g, " ");
+
+  // Remove common verbose prefixes
+  const prefixes = [
+    /^secure\s+\d+%?\s*(of\s+)?/i,
+    /^establish\s+(binding\s+)?/i,
+    /^gain\s+(majority\s+)?/i,
+    /^minimise\s+/i,
+    /^minimize\s+/i,
+    /^protect\s+/i,
+    /^ensure\s+/i,
+    /^maintain\s+/i,
+    /^achieve\s+/i,
+    /^obtain\s+/i,
+  ];
+
+  for (const prefix of prefixes) {
+    cleaned = cleaned.replace(prefix, "");
+  }
+
+  // Truncate if still too long (max 35 chars)
+  if (cleaned.length > 35) {
+    cleaned = cleaned.slice(0, 32) + "...";
+  }
+
+  // Capitalise first letter
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
 /**
@@ -275,6 +320,10 @@ export default function NexusPage() {
   // Treaty state (real data from backend)
   const [treatyValues, setTreatyValues] = useState<Record<string, number>>({});
 
+  // Consensus Reached modal state
+  const [showProtocolModal, setShowProtocolModal] = useState(false);
+  const [modalDismissed, setModalDismissed] = useState(false);
+
   /**
    * Fetch initial simulation state from backend.
    */
@@ -285,7 +334,11 @@ export default function NexusPage() {
       const response = await fetch(
         `${API_BASE_URL}/simulation/${simulationId}/state`,
       );
-      if (!response.ok) throw new Error("Failed to fetch simulation state");
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Fetch failed (${response.status}):`, errorText);
+        throw new Error(`Failed to fetch simulation state: ${response.status}`);
+      }
 
       const data = await response.json();
       const state: SimulationState = data.state;
@@ -333,6 +386,10 @@ export default function NexusPage() {
       setStatus(state.status);
       if (state.current_treaty?.issue_values) {
         setTreatyValues(state.current_treaty.issue_values);
+      }
+      // Auto-show modal if consensus already reached
+      if (state.status === "CONSENSUS_REACHED") {
+        setShowProtocolModal(true);
       }
       setIsLoading(false);
     } catch (error) {
@@ -409,6 +466,11 @@ export default function NexusPage() {
           ) {
             setTreatyValues(data.treaty_values);
           }
+
+          // Update status from SSE (tracks CONSENSUS_REACHED, DEADLOCK, etc.)
+          if (data.status) {
+            setStatus(data.status);
+          }
         } else if (data.type === "coalitions_detected") {
           // Update alliances/links
           const newLinks: Link[] = data.alliances.map(
@@ -420,7 +482,8 @@ export default function NexusPage() {
           );
           setLinks(newLinks);
         } else if (data.type === "simulation_complete") {
-          setStatus("COMPLETE");
+          // Use actual status from backend (CONSENSUS_REACHED, DEADLOCK, or COMPLETE)
+          setStatus(data.status || "COMPLETE");
           setIsStreaming(false);
           eventSource.close();
           eventSourceRef.current = null;
@@ -477,6 +540,19 @@ export default function NexusPage() {
       }
     };
   }, [simulationId, router, fetchSimulationState]);
+
+  // Auto-show Consensus Reached modal when consensus reached (only once)
+  useEffect(() => {
+    if (
+      status === "CONSENSUS_REACHED" &&
+      !showProtocolModal &&
+      !modalDismissed
+    ) {
+      // Small delay for dramatic effect
+      const timer = setTimeout(() => setShowProtocolModal(true), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [status, showProtocolModal, modalDismissed]);
 
   // D3 force simulation -- re-render when nodes/links change
   useEffect(() => {
@@ -659,9 +735,14 @@ export default function NexusPage() {
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold tracking-widest uppercase">
-                  Pact
-                </h2>
+                <Link
+                  href="/"
+                  className="hover:text-indigo-400 transition-colors"
+                >
+                  <h2 className="text-lg font-bold tracking-widest uppercase">
+                    Pact
+                  </h2>
+                </Link>
                 {isStreaming && (
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 )}
@@ -696,18 +777,31 @@ export default function NexusPage() {
             </Badge>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            {!isStreaming ? (
+            {status === "CONSENSUS_REACHED" ? (
+              <Button
+                size="sm"
+                className="col-span-2 bg-emerald-600 text-white text-xs hover:bg-emerald-700"
+                onClick={() => setShowProtocolModal(true)}
+              >
+                <CheckCircle2 size={12} className="mr-1" />
+                RATIFIED — View Treaty
+              </Button>
+            ) : status === "DEADLOCK" ? (
+              <Button
+                size="sm"
+                className="col-span-2 bg-red-900/50 text-red-100 text-xs cursor-not-allowed border border-red-500/30"
+                disabled
+              >
+                <X size={12} className="mr-1" />
+                DEADLOCK — No Agreement
+              </Button>
+            ) : !isStreaming ? (
               <>
                 <Button
                   size="sm"
                   className="bg-white text-black text-xs hover:bg-zinc-200"
                   onClick={stepSimulation}
-                  disabled={
-                    status === "COMPLETE" ||
-                    status === "DEADLOCK" ||
-                    status === "CONSENSUS_REACHED" ||
-                    isNextEpochLoading
-                  }
+                  disabled={status === "COMPLETE" || isNextEpochLoading}
                 >
                   {isNextEpochLoading ? (
                     <Loader2 size={12} className="mr-1 animate-spin" />
@@ -720,12 +814,7 @@ export default function NexusPage() {
                   variant="outline"
                   className="text-xs border-white/10 hover:bg-white/5"
                   onClick={startStream}
-                  disabled={
-                    status === "COMPLETE" ||
-                    status === "DEADLOCK" ||
-                    status === "CONSENSUS_REACHED" ||
-                    isNextEpochLoading
-                  }
+                  disabled={status === "COMPLETE" || isNextEpochLoading}
                 >
                   {isNextEpochLoading ? (
                     <Loader2 size={12} className="mr-1 animate-spin" />
@@ -939,7 +1028,7 @@ export default function NexusPage() {
 
         {/* Draft State Widget -- Shows real treaty values from backend */}
         {Object.keys(treatyValues).length > 0 && (
-          <div className="absolute bottom-20 left-8 z-10 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 rounded-lg p-4 min-w-50 font-mono">
+          <div className="absolute bottom-20 left-8 z-50 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 rounded-lg p-4 min-w-50 font-mono shadow-xl">
             <div className="text-zinc-400 border-b border-zinc-700 mb-3 pb-2 text-[10px] uppercase tracking-widest">
               Current Draft Terms
             </div>
@@ -949,8 +1038,11 @@ export default function NexusPage() {
                   key={key}
                   className="flex justify-between items-center text-xs"
                 >
-                  <span className="text-teal-400 capitalize">
-                    {key.replace(/_/g, " ")}
+                  <span
+                    className="text-teal-400"
+                    title={key.replace(/_/g, " ")}
+                  >
+                    {formatTreatyKey(key)}
                   </span>
                   <span className="text-white font-medium">
                     {formatTreatyValue(value, key)}
@@ -962,7 +1054,7 @@ export default function NexusPage() {
         )}
 
         {/* Graph Legend */}
-        <div className="absolute bottom-16 right-8 z-10 bg-zinc-900/80 backdrop-blur-sm border border-white/10 rounded-lg p-3 space-y-2">
+        <div className="absolute bottom-16 right-8 z-50 bg-zinc-900/80 backdrop-blur-sm border border-white/10 rounded-lg p-3 space-y-2 shadow-xl">
           <p className="text-[9px] uppercase tracking-widest text-zinc-500 mb-2">
             Legend
           </p>
@@ -1109,6 +1201,136 @@ export default function NexusPage() {
           </div>
         </ScrollArea>
       </aside>
+
+      {/* Consensus Reached Modal */}
+      {showProtocolModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+          <div className="bg-[#030303] border border-white/10 max-w-lg w-full max-h-[85vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="border-b border-white/5 px-6 py-4 flex items-center justify-between shrink-0">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="text-emerald-400" size={16} />
+                  <h2 className="text-xs font-semibold uppercase tracking-widest text-white">
+                    Consensus Reached
+                  </h2>
+                </div>
+                <p className="text-[10px] text-zinc-600 uppercase tracking-widest">
+                  ID: {simulationId?.slice(0, 8)} • Ratified at Epoch{" "}
+                  {currentEpoch}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowProtocolModal(false);
+                  setModalDismissed(true);
+                }}
+                className="text-zinc-600 hover:text-white transition-colors p-1"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Content - scrollable */}
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
+              {/* Section 1: Ratified Terms */}
+              <section>
+                <h3 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
+                  Ratified Terms
+                </h3>
+                <div className="space-y-px">
+                  {Object.entries(treatyValues).map(([key, finalValue]) => (
+                    <div
+                      key={key}
+                      className="flex items-center justify-between py-2 border-b border-white/5 last:border-0 group hover:bg-white/[0.02] transition-colors"
+                    >
+                      <span
+                        className="text-xs text-zinc-400 pr-4"
+                        title={key.replace(/_/g, " ")}
+                      >
+                        {formatTreatyKey(key)}
+                      </span>
+                      <span className="text-xs text-white font-mono shrink-0">
+                        {formatTreatyValue(finalValue, key)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Section 2: Signatories */}
+              <section>
+                <h3 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
+                  Signatories
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {nodes.map((node) => (
+                    <div
+                      key={node.id}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.02] border border-white/5 text-xs"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span className="text-white">{node.name}</span>
+                      <span className="text-zinc-600 text-[10px]">
+                        {node.group}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Metrics */}
+              <section className="grid grid-cols-2 gap-px bg-white/5">
+                <div className="p-4 bg-[#030303]">
+                  <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-1">
+                    Nash Product
+                  </p>
+                  <p className="text-2xl font-light text-white">
+                    {nashProduct.toFixed(3)}
+                    {initialNashProduct !== null && (
+                      <span
+                        className={`text-xs ml-2 ${nashProduct >= initialNashProduct ? "text-emerald-400" : "text-red-400"}`}
+                      >
+                        {nashProduct >= initialNashProduct ? "+" : ""}
+                        {(nashProduct - initialNashProduct).toFixed(3)}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="p-4 bg-[#030303]">
+                  <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-1">
+                    Final Tension
+                  </p>
+                  <p
+                    className={`text-2xl font-light ${
+                      globalTension < 0.3
+                        ? "text-emerald-400"
+                        : globalTension < 0.6
+                          ? "text-amber-400"
+                          : "text-red-400"
+                    }`}
+                  >
+                    {(globalTension * 100).toFixed(0)}%
+                  </p>
+                </div>
+              </section>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-white/5 px-6 py-4 flex justify-end shrink-0">
+              <Button
+                onClick={() => {
+                  setShowProtocolModal(false);
+                  setModalDismissed(true);
+                }}
+                className="bg-white text-black hover:bg-zinc-200 px-6 text-xs font-semibold uppercase tracking-wider"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

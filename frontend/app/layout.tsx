@@ -25,8 +25,8 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Template",
-  description: "A modern Next.js + FastAPI template",
+  title: "Pact",
+  description: "Achieve consensus through conflict.",
 };
 
 export default function RootLayout({
