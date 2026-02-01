@@ -77,6 +77,39 @@ function highlightNegotiationTerms(text: string): React.ReactNode {
 }
 
 /**
+ * Formats a treaty value for display.
+ * Handles percentages (0-1), large numbers, and booleans.
+ */
+function formatTreatyValue(value: number, key: string): string {
+  // Boolean-like values (0 or 1)
+  if (value === 0 || value === 1) {
+    // Check if key suggests it's a boolean (contains 'binding', 'veto', 'authority', 'enabled')
+    const boolKeys = ["binding", "veto", "authority", "enabled", "required", "mandatory"];
+    if (boolKeys.some((k) => key.toLowerCase().includes(k))) {
+      return value === 1 ? "YES" : "NO";
+    }
+  }
+
+  // Large numbers (likely monetary values in raw form - convert to billions)
+  if (value > 1_000_000) {
+    return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  }
+
+  // Values between 0 and 1 are percentages
+  if (value >= 0 && value <= 1) {
+    return `${(value * 100).toFixed(0)}%`;
+  }
+
+  // Values between 1 and 100 might already be percentages
+  if (value > 1 && value <= 100) {
+    return `${value.toFixed(0)}%`;
+  }
+
+  // Default: show as decimal
+  return value.toFixed(1);
+}
+
+/**
  * Renders a mini sparkline chart for trend visualisation.
  * Uses pure SVG for lightweight rendering.
  */
@@ -191,6 +224,7 @@ export default function NexusPage() {
   const [globalTension, setGlobalTension] = useState(0.5);
   const [nashProduct, setNashProduct] = useState(0);
   const [prevNashProduct, setPrevNashProduct] = useState(0);  // Track previous for delta
+  const [initialNashProduct, setInitialNashProduct] = useState<number | null>(null);  // Track starting value
   const [nashHistory, setNashHistory] = useState<number[]>([]);  // History for sparkline
   const [status, setStatus] = useState("INITIALISING");
   const [lastSpeakingAgent, setLastSpeakingAgent] = useState<string | null>(null);  // For pulse animation
@@ -253,6 +287,10 @@ export default function NexusPage() {
       setCurrentEpoch(state.current_epoch);
       setGlobalTension(state.global_tension);
       setNashProduct(state.nash_product);
+      // Set initial Nash Product for delta tracking
+      if (state.nash_product > 0 && initialNashProduct === null) {
+        setInitialNashProduct(state.nash_product);
+      }
       setStatus(state.status);
       if (state.current_treaty?.issue_values) {
         setTreatyValues(state.current_treaty.issue_values);
@@ -285,6 +323,10 @@ export default function NexusPage() {
           setGlobalTension(data.global_tension);
           setPrevNashProduct(nashProduct);  // Store previous before updating
           setNashProduct(data.nash_product);
+          // Set initial Nash Product on first meaningful value
+          setInitialNashProduct((prev) => 
+            prev === null && data.nash_product > 0 ? data.nash_product : prev
+          );
           setNashHistory((prev) => [...prev.slice(-9), data.nash_product]);  // Keep last 10 for sparkline
           setLastSpeakingAgent(data.agent_id);  // Trigger pulse animation
           setTimeout(() => setLastSpeakingAgent(null), 1500);  // Clear after animation
@@ -556,14 +598,26 @@ export default function NexusPage() {
             <Badge
               variant="outline"
               className={
-                status === "COMPLETE"
-                  ? "text-amber-400 border-amber-500/20 bg-amber-500/5"
-                  : isStreaming
-                    ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/5"
-                    : "text-zinc-400 border-zinc-500/20 bg-zinc-500/5"
+                status === "CONSENSUS_REACHED"
+                  ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/5"
+                  : status === "DEADLOCK"
+                    ? "text-red-400 border-red-500/20 bg-red-500/5"
+                    : status === "COMPLETE"
+                      ? "text-amber-400 border-amber-500/20 bg-amber-500/5"
+                      : isStreaming
+                        ? "text-indigo-400 border-indigo-500/20 bg-indigo-500/5"
+                        : "text-zinc-400 border-zinc-500/20 bg-zinc-500/5"
               }
             >
-              {status === "COMPLETE" ? "Complete" : isStreaming ? "Live" : "Ready"}
+              {status === "CONSENSUS_REACHED"
+                ? "Treaty Signed"
+                : status === "DEADLOCK"
+                  ? "Deadlock"
+                  : status === "COMPLETE"
+                    ? "Complete"
+                    : isStreaming
+                      ? "Live"
+                      : "Ready"}
             </Badge>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -573,7 +627,7 @@ export default function NexusPage() {
                   size="sm"
                   className="bg-white text-black text-xs hover:bg-zinc-200"
                   onClick={stepSimulation}
-                  disabled={status === "COMPLETE"}
+                  disabled={status === "COMPLETE" || status === "DEADLOCK" || status === "CONSENSUS_REACHED"}
                 >
                   Next Epoch
                 </Button>
@@ -582,7 +636,7 @@ export default function NexusPage() {
                   variant="outline"
                   className="text-xs border-white/10 hover:bg-white/5"
                   onClick={startStream}
-                  disabled={status === "COMPLETE"}
+                  disabled={status === "COMPLETE" || status === "DEADLOCK" || status === "CONSENSUS_REACHED"}
                 >
                   <Play size={12} className="mr-1" />
                   Auto-run
@@ -723,13 +777,17 @@ export default function NexusPage() {
                 }`}>
                   {nashProduct < 0.01 ? "0.00" : nashProduct.toFixed(2)}
                 </p>
-                {nashProduct >= 0.01 && prevNashProduct >= 0.01 && nashProduct !== prevNashProduct && (
+                {/* Show delta from initial value */}
+                {nashProduct >= 0.01 && initialNashProduct !== null && initialNashProduct > 0 && (
                   <span className={`text-xs font-medium font-mono ${
-                    nashProduct > prevNashProduct
+                    nashProduct > initialNashProduct
                       ? "text-emerald-400"
-                      : "text-red-400"
+                      : nashProduct < initialNashProduct
+                        ? "text-red-400"
+                        : "text-zinc-500"
                   }`}>
-                    {nashProduct > prevNashProduct ? "▲" : "▼"}
+                    ({nashProduct > initialNashProduct ? "+" : ""}
+                    {(nashProduct - initialNashProduct).toFixed(2)})
                   </span>
                 )}
               </div>
@@ -778,13 +836,11 @@ export default function NexusPage() {
             <div className="space-y-2">
               {Object.entries(treatyValues).map(([key, value]) => (
                 <div key={key} className="flex justify-between items-center text-xs">
-                  <span className="text-teal-400">
+                  <span className="text-teal-400 capitalize">
                     {key.replace(/_/g, " ")}
                   </span>
                   <span className="text-white font-medium">
-                    {typeof value === "number" && value < 1 
-                      ? `${(value * 100).toFixed(0)}%`
-                      : value.toFixed(1)}
+                    {formatTreatyValue(value, key)}
                   </span>
                 </div>
               ))}

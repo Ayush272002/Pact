@@ -8,15 +8,12 @@ import uuid
 
 from schemas import (
     AgentProfile,
-    CognitiveParams,
     DiplomaticMessage,
     IntentBid,
-    IRArchetype,
     ScenarioConfig,
     ShockType,
     SimulationState,
-    StrategyType,
-    UtilityGoal,
+    TreatyState,
 )
 from services.llm_service import llm_service
 
@@ -26,6 +23,10 @@ RECENCY_PENALTY_FACTOR = 2.0
 
 # Consensus detection
 CONSENSUS_URGENCY_THRESHOLD = 2.0
+
+# Simulation limits
+MAX_EPOCHS = 15
+BASE_TENSION = 0.05  # Minimum tension floor (never shows 0%)
 
 
 class SimulationService:
@@ -49,12 +50,18 @@ class SimulationService:
         """
         agents = self._create_default_agents(config)
 
+        # Initialise treaty with negotiation issues (starting values at 0.5)
+        initial_treaty = TreatyState(
+            issue_values={issue: 0.5 for issue in config.negotiation_issues},
+        )
+
         state = SimulationState(
             simulation_id=str(uuid.uuid4()),
             agents=agents,
             current_epoch=0,
             global_tension=0.3,
             volatility=config.global_volatility,
+            current_treaty=initial_treaty,
         )
 
         self._simulations[state.simulation_id] = state
@@ -86,6 +93,21 @@ class SimulationService:
 
         state.current_epoch += 1
 
+        # Check for epoch limit -- negotiations have expired
+        if state.current_epoch >= MAX_EPOCHS:
+            state.status = "DEADLOCK"
+            # Inject system message about failed negotiations
+            state.chat_history.append(
+                DiplomaticMessage(
+                    agent_id="SYSTEM",
+                    epoch=state.current_epoch,
+                    content="Negotiations have expired without agreement. The Treaty fails.",
+                    sentiment_delta=-0.2,
+                    game_move=None,
+                )
+            )
+            return state
+
         # Check for stochastic shock based on volatility
         if self._should_trigger_shock(state):
             self._apply_shock(state)
@@ -112,8 +134,11 @@ class SimulationService:
         # Update global tension based on sentiment
         self._update_global_tension(state, message.sentiment_delta)
 
-        # Update treaty state if there's a numeric proposal
-        if message.game_move and message.game_move.numeric_proposal:
+        # Update treaty state from structured treaty_updates (preferred)
+        if message.treaty_updates and message.treaty_updates.issue_updates:
+            self._update_treaty_state(state, message.treaty_updates.issue_updates)
+        # Fallback: also check numeric_proposal for backwards compatibility
+        elif message.game_move and message.game_move.numeric_proposal:
             self._update_treaty_state(state, message.game_move.numeric_proposal)
 
         # Calculate Nash Product (joint utility)
@@ -216,7 +241,8 @@ class SimulationService:
         so we SUBTRACT it from tension (good vibes = lower tension).
         """
         state.global_tension -= sentiment_delta  # Positive sentiment reduces tension
-        state.global_tension = max(0.0, min(1.0, state.global_tension))
+        # Clamp to [BASE_TENSION, 1.0] -- never show 0% (looks fake)
+        state.global_tension = max(BASE_TENSION, min(1.0, state.global_tension))
 
     def _deduct_political_capital(
         self,
@@ -251,11 +277,33 @@ class SimulationService:
     def _update_treaty_state(
         self,
         state: SimulationState,
-        proposal: dict[str, float],
+        proposal: dict[str, float | bool],
     ) -> None:
-        """Update treaty state with new proposals."""
+        """Update treaty state with new proposals.
+
+        Handles normalisation of values:
+        - Percentages > 1.0 are divided by 100 (e.g. 40 -> 0.40)
+        - Booleans are converted to 1.0/0.0 for consistent display
+        - Only updates issues that exist in the initial treaty
+        """
+        valid_issues = set(state.current_treaty.issue_values.keys())
+
         for issue, value in proposal.items():
-            state.current_treaty.issue_values[issue] = value
+            # Skip unknown issues (prevents hallucinated keys)
+            if issue not in valid_issues:
+                continue
+
+            # Normalise the value
+            if isinstance(value, bool):
+                normalised = 1.0 if value else 0.0
+            elif isinstance(value, (int, float)):
+                # If > 1.0, assume it's a percentage that needs dividing
+                normalised = float(value) / 100.0 if value > 1.0 else float(value)
+            else:
+                continue  # Skip invalid types
+
+            state.current_treaty.issue_values[issue] = normalised
+
         state.current_treaty.last_updated_epoch = state.current_epoch
 
     def _calculate_nash_product(self, state: SimulationState) -> float:

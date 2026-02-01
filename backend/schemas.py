@@ -187,6 +187,20 @@ class NegotiationMove(BaseModel):
         return {k: (val / 100.0 if val > 1.0 else val) for k, val in v.items()}
 
 
+class TreatyUpdate(BaseModel):
+    """Structured treaty value updates.
+
+    All fields are optional - only include what you're changing.
+    Values should be normalised: percentages as 0.0-1.0, booleans as True/False.
+    """
+
+    # Generic issue values dict - LLM can set any negotiation issue
+    issue_updates: dict[str, float | bool] | None = Field(
+        default=None,
+        description="Map of issue name to new value (percentages as 0.0-1.0)",
+    )
+
+
 class DiplomaticMessage(BaseModel):
     """Output of the Speaking Phase.
 
@@ -202,6 +216,12 @@ class DiplomaticMessage(BaseModel):
         ..., description="Shift in global tension (-1.0 to 1.0)"
     )
     game_move: NegotiationMove | None = None
+
+    # Structured treaty updates - preferred over parsing text
+    treaty_updates: TreatyUpdate | None = Field(
+        default=None,
+        description="Explicit treaty value changes (use instead of embedding in text)",
+    )
 
     tool_calls: list[str] | None = Field(
         default=None, description="List of tool names invoked by the agent"
