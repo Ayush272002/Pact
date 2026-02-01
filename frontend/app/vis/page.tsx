@@ -821,7 +821,7 @@ export default function NexusPage() {
       {/* CENTER: The Swarm Canvas */}
       <main className="flex-1 relative">
         {/* HUD Overlays -- Real-time metrics */}
-        <div className="absolute top-8 left-8 z-10 flex gap-12">
+        <div className="absolute top-8 left-8 z-10 flex gap-12 bg-zinc-950/80 backdrop-blur-md border border-white/5 rounded-xl px-6 py-4">
           <div>
             <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">
               Global Tension
@@ -958,13 +958,13 @@ export default function NexusPage() {
       </main>
 
       {/* RIGHT SIDEBAR: Agent Insights */}
-      <aside className="w-1/6 border-l border-white/5 bg-zinc-950/20 hidden lg:flex flex-col">
-        <div className="p-5 border-b border-white/5">
+      <aside className="w-1/6 border-l border-white/5 bg-zinc-950/20 hidden lg:flex flex-col overflow-hidden h-screen">
+        <div className="p-5 border-b border-white/5 flex-shrink-0">
           <h4 className="text-[10px] uppercase tracking-widest text-zinc-500 font-medium">
             Negotiating Parties
           </h4>
         </div>
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 overflow-auto">
           <div className="p-4 space-y-4">
             {nodes.length === 0 ? (
               <p className="text-sm text-zinc-600 text-center py-8">
