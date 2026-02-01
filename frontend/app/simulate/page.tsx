@@ -1,9 +1,64 @@
+/**
+ * @fileoverview Simulation configuration page for the Pact multi-agent platform.
+ * Allows users to define scenario context, participating agents, and negotiation parameters.
+ */
+
 "use client";
 
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Plus, Globe2, Zap, X, Trash2 } from "lucide-react";
+import { Plus, Globe2, Zap, X, Trash2, Loader2, Sparkles } from "lucide-react";
+
+/** Base URL for the backend API. */
+const API_BASE_URL = "http://localhost:8000/api";
+
+/** Demo scenario preset -- "Arctic Oil Treaty 2030". */
+const DEMO_SCENARIO = {
+  description: "Three Arctic nations must negotiate drilling rights, environmental protections, and revenue sharing for a newly discovered oil field in disputed waters. Rising tensions and climate concerns add urgency to reaching a sustainable agreement.",
+  volatility: 0.4,
+  parties: [
+    {
+      id: "demo-norway",
+      name: "Norwegian Delegation",
+      description: "A wealthy Nordic nation prioritising environmental standards whilst seeking economic benefits from Arctic resources.",
+      goals: [
+        { text: "Secure 40% revenue share from oil extraction", priority: 8 },
+        { text: "Establish binding environmental protections", priority: 9 },
+      ],
+      constraints: [
+        { text: "Cannot accept less than 25% revenue share", priority: 7 },
+        { text: "Must include carbon offset provisions", priority: 8 },
+      ],
+    },
+    {
+      id: "demo-russia",
+      name: "Russian Federation",
+      description: "A major energy power seeking to expand Arctic influence and maximise extraction capacity.",
+      goals: [
+        { text: "Gain majority control of extraction operations", priority: 9 },
+        { text: "Minimise environmental restrictions on drilling", priority: 7 },
+      ],
+      constraints: [
+        { text: "Will not accept third-party oversight", priority: 8 },
+        { text: "Requires access to deepwater drilling zones", priority: 9 },
+      ],
+    },
+    {
+      id: "demo-canada",
+      name: "Canadian Government",
+      description: "Balancing indigenous rights, environmental concerns, and economic development in the North.",
+      goals: [
+        { text: "Protect indigenous land and fishing rights", priority: 10 },
+        { text: "Secure infrastructure investment commitments", priority: 6 },
+      ],
+      constraints: [
+        { text: "Must consult with First Nations communities", priority: 9 },
+        { text: "Cannot compromise on Arctic sovereignty claims", priority: 8 },
+      ],
+    },
+  ],
+};
 
 interface Goal {
   text: string;
@@ -28,6 +83,8 @@ export default function SimulatePage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [scenario, setScenario] = useState("");
+  const [volatility, setVolatility] = useState(0.3);  // Global volatility scalar (0.0--1.0)
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [parties, setParties] = useState<Party[]>([
     {
       id: crypto.randomUUID(),
@@ -45,6 +102,14 @@ export default function SimulatePage() {
   }, [searchParams]);
 
   // --- Logic Handlers ---
+
+  /** Load demo scenario with pre-populated data. */
+  const loadDemoScenario = () => {
+    setScenario(DEMO_SCENARIO.description);
+    setVolatility(DEMO_SCENARIO.volatility);
+    setParties(DEMO_SCENARIO.parties);
+  };
+
   const addParty = () => {
     setParties([
       ...parties,
@@ -170,6 +235,60 @@ export default function SimulatePage() {
     background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${(val - 1) * 11.11}%, #18181b ${(val - 1) * 11.11}%, #18181b 100%)`,
   });
 
+  /** Style for the volatility slider (0.0--1.0 range). */
+  const getVolatilitySliderStyle = (val: number) => ({
+    background: `linear-gradient(to right, #f59e0b 0%, #f59e0b ${val * 100}%, #18181b ${val * 100}%, #18181b 100%)`,
+  });
+
+  /**
+   * Submit the scenario configuration to the backend API.
+   * Creates a new simulation and navigates to the visualisation page.
+   */
+  const handleInitialiseSwarm = async () => {
+    if (!scenario.trim()) {
+      alert("Please enter a scenario description.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Extract negotiation issues from agent goals
+      const negotiationIssues = parties
+        .flatMap((p) => p.goals.map((g) => g.text))
+        .filter((text) => text.trim() !== "");
+
+      const response = await fetch(`${API_BASE_URL}/scenario/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenario_name: scenario.slice(0, 50),  // Use first 50 chars as name
+          description: scenario,
+          negotiation_issues: negotiationIssues.length > 0 ? negotiationIssues : ["general_agreement"],
+          global_volatility: volatility,
+          max_epochs: 10,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to create simulation");
+      }
+
+      const data = await response.json();
+
+      // Navigate to visualisation page with the simulation ID
+      router.push(`/vis?id=${data.simulation_id}`);
+    }
+    catch (error) {
+      console.error("Failed to initialise simulation:", error);
+      alert(error instanceof Error ? error.message : "Failed to connect to backend. Ensure the server is running.");
+    }
+    finally {
+      setIsSubmitting(false);
+    }
+  };
+
   if (!mounted) return <div className="min-h-screen bg-[#030303]" />;
 
   return (
@@ -240,9 +359,18 @@ export default function SimulatePage() {
                 Step 01 / Configure Context
               </span>
             </div>
-            <h1 className="text-5xl md:text-6xl font-light tracking-tight text-white leading-tight">
-              Initialize <span className="text-zinc-600 italic">Scenario.</span>
-            </h1>
+            <div className="flex items-end justify-between gap-4">
+              <h1 className="text-5xl md:text-6xl font-light tracking-tight text-white leading-tight">
+                Initialize <span className="text-zinc-600 italic">Scenario.</span>
+              </h1>
+              <button
+                onClick={loadDemoScenario}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-full text-[11px] uppercase tracking-widest font-bold hover:bg-amber-500/20 transition-colors whitespace-nowrap"
+              >
+                <Sparkles size={14} />
+                Load Demo
+              </button>
+            </div>
             <div className="pt-10">
               <label className="block text-[13px] uppercase tracking-[0.15em] text-zinc-500 mb-4 font-bold">
                 Environment Parameters
@@ -253,6 +381,30 @@ export default function SimulatePage() {
                 placeholder="Define the conflict landscape..."
                 className="w-full bg-transparent border-b border-white/10 py-4 text-2xl font-light focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-zinc-900 resize-none overflow-hidden"
                 rows={1}
+              />
+            </div>
+
+            {/* Volatility Slider -- controls probability of stochastic shocks */}
+            <div className="pt-8 space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="block text-[13px] uppercase tracking-[0.15em] text-zinc-500 font-bold">
+                  Global Volatility
+                </label>
+                <span className="text-amber-500 font-bold text-sm">
+                  {(volatility * 100).toFixed(0)}%
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-600 -mt-2">
+                Controls probability of stochastic shocks (0% = stable, 100% = chaotic)
+              </p>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={volatility * 100}
+                onChange={(e) => setVolatility(parseInt(e.target.value) / 100)}
+                style={getVolatilitySliderStyle(volatility)}
+                className="w-full"
               />
             </div>
           </section>
@@ -449,11 +601,21 @@ export default function SimulatePage() {
 
           <footer className="flex flex-col items-center py-24 border-t border-white/5">
             <button
-              onClick={() => console.log({ scenario, parties })}
-              className="group relative px-14 py-5 overflow-hidden rounded-full bg-white text-black font-bold transition-all hover:scale-105 active:scale-95 shadow-2xl"
+              onClick={handleInitialiseSwarm}
+              disabled={isSubmitting}
+              className="group relative px-14 py-5 overflow-hidden rounded-full bg-white text-black font-bold transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               <span className="relative z-10 flex items-center gap-3 uppercase text-[12px] tracking-[0.2em]">
-                Initialize Swarm <Globe2 size={16} />
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Initialising...
+                  </>
+                ) : (
+                  <>
+                    Initialise Swarm <Globe2 size={16} />
+                  </>
+                )}
               </span>
               <div className="absolute inset-0 bg-indigo-500 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
             </button>

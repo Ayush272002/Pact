@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Landing page for the Pact multi-agent simulation platform.
+ * Provides hero section, scenario search input, and feature overview.
+ */
+
 "use client";
 
 import { useState } from "react";
@@ -11,12 +16,14 @@ export default function LandingPage() {
   const router = useRouter();
   const [scenario, setScenario] = useState("");
 
+  /** Navigate to simulation configuration page with scenario context. */
   const handleSimulate = () => {
     if (scenario.trim()) {
       router.push(`/simulate?scenario=${encodeURIComponent(scenario)}`);
     }
   };
 
+  /** Handle Enter key press to trigger simulation. */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleSimulate();
@@ -32,23 +39,19 @@ export default function LandingPage() {
             Pact
           </span>
           <div className="hidden md:flex gap-6 text-xs font-medium text-zinc-500 uppercase tracking-widest">
-            <a href="#" className="hover:text-white transition-colors">
+            <a href="/simulate" className="hover:text-white transition-colors">
               Simulator
-            </a>
-            <a href="#" className="hover:text-white transition-colors">
-              Research Paper
-            </a>
-            <a href="#" className="hover:text-white transition-colors">
-              Nodes
             </a>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          className="text-xs uppercase tracking-widest hover:bg-white/5"
+        <a
+          href="https://github.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs uppercase tracking-widest text-zinc-500 hover:text-white transition-colors"
         >
-          Enter Console
-        </Button>
+          View on GitHub
+        </a>
       </nav>
 
       {/* Hero Section */}
@@ -58,13 +61,6 @@ export default function LandingPage() {
 
         {/* Main Content */}
         <div className="relative z-10 text-center space-y-8 max-w-4xl px-4">
-          <Badge
-            variant="outline"
-            className="border-indigo-500/30 text-indigo-400 bg-indigo-500/5 px-4 py-1 rounded-full animate-pulse"
-          >
-            Adversarial Equilibrium Engine v1.0
-          </Badge>
-
           <h1 className="text-6xl md:text-8xl font-light tracking-tight text-white leading-tight">
             Force consensus <br />
             <span className="text-zinc-500 italic">through conflict.</span>
@@ -135,23 +131,16 @@ export default function LandingPage() {
               Consensus Map
             </h3>
             <p className="text-sm text-zinc-500 leading-relaxed">
-              Visualise the transition from polarized conflict to optimized
+            Visualise the transition from polarised conflict to optimised
               agreement through force-directed graphs.
             </p>
           </div>
         </div>
       </main>
 
-      {/* Stats Footer */}
-      <footer className="p-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center text-[10px] text-zinc-600 uppercase tracking-[0.2em]">
-        <div className="flex gap-8 mb-4 md:mb-0">
-          <span>Active Agents: 14,021</span>
-          <span>Avg Epochs to Consensus: 12.4</span>
-        </div>
-        <div className="flex gap-4">
-          <span>System Status: Optimal</span>
-          <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
-        </div>
+      {/* Footer */}
+      <footer className="p-8 border-t border-white/5 flex justify-center items-center text-[10px] text-zinc-600 uppercase tracking-[0.2em]">
+        <span>Multi-Agent Negotiation Simulation • Built for ICHack 2026</span>
       </footer>
     </div>
   );

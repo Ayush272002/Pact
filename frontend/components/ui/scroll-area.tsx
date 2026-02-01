@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Scroll area component for creating custom scrollable regions.
+ * Provides styled scrollbars with vertical and horizontal orientation support.
+ */
+
 "use client"
 
 import * as React from "react"

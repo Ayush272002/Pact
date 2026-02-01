@@ -6,6 +6,7 @@ Includes logging, timeouts, and exponential backoff retry logic.
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
@@ -20,10 +21,15 @@ from tenacity import (
 
 from schemas import (
     AgentProfile,
+    CognitiveParams,
     DiplomaticMessage,
     IntentBid,
+    IRArchetype,
     NegotiationMove,
+    ScenarioConfig,
     SimulationState,
+    StrategyType,
+    UtilityGoal,
 )
 
 # Load environment variables
@@ -54,6 +60,169 @@ class LLMService:
             MODEL_NAME,
             REQUEST_TIMEOUT,
         )
+
+    def generate_agents_from_scenario(
+        self,
+        config: ScenarioConfig,
+    ) -> dict[str, AgentProfile]:
+        """Generate appropriate agents dynamically based on scenario context.
+
+        Uses LLM to infer stakeholders from the scenario description.
+
+        Args:
+            config: Scenario configuration with description and issues
+
+        Returns:
+            Dictionary of AgentProfile objects keyed by agent_id
+        """
+        prompt = f"""Based on this negotiation scenario, identify 3--5 key stakeholders or parties who would be involved:
+
+Scenario: {config.description}
+Issues to negotiate: {', '.join(config.negotiation_issues)}
+
+For each stakeholder, determine:
+1. Their name/identity
+2. Their IR archetype (realism, liberalism, constructivism, or offensive_realism)
+3. Their negotiation strategy
+4. Their key goals and priorities
+5. Their private mandate (hidden agenda)
+
+Return ONLY a Python list of dictionaries with these keys:
+- name (str)
+- archetype (str: one of 'realism', 'liberalism', 'constructivism', 'offensive_realism')
+- shadow_of_future (float 0.0--1.0)
+- batna_score (float 0.0--1.0)
+- audience_cost (float 0.0--1.0)
+- utility_goals (list of dicts with 'topic' and 'weight' keys)
+- private_mandate (str)
+
+Example format:
+[
+  {{
+    "name": "Corporate Investor",
+    "archetype": "realism",
+    "shadow_of_future": 0.6,
+    "batna_score": 0.8,
+    "audience_cost": 0.3,
+    "utility_goals": [{{"topic": "profit_margin", "weight": 0.9}}],
+    "private_mandate": "Maximise short-term returns"
+  }}
+]
+"""
+
+        try:
+            response = self.llm.invoke(prompt)
+            import ast
+            import re
+
+            content = response.content
+            # Extract list from markdown code blocks if present
+            match = re.search(r"```(?:python)?\s*(\[.*?\])\s*```", content, re.DOTALL)
+            if match:
+                list_str = match.group(1)
+            else:
+                list_str = content
+
+            agents_data = ast.literal_eval(list_str)
+
+            # Convert to AgentProfile objects
+            agents = {}
+            archetype_map = {
+                "realism": IRArchetype.REALISM,
+                "liberalism": IRArchetype.LIBERALISM,
+                "constructivism": IRArchetype.CONSTRUCTIVISM,
+                "offensive_realism": IRArchetype.OFFENSIVE_REALISM,
+            }
+            strategy_map = {
+                "realism": StrategyType.ZD_EXTORT_2,
+                "liberalism": StrategyType.TIT_FOR_TAT,
+                "constructivism": StrategyType.PAVLOV,
+                "offensive_realism": StrategyType.GRIM_TRIGGER,
+            }
+
+            for idx, data in enumerate(agents_data[:5]):  # Max 5 agents
+                agent_id = f"agent_{idx + 1}"
+                archetype_str = data.get("archetype", "realism").lower()
+                archetype = archetype_map.get(archetype_str, IRArchetype.REALISM)
+
+                agents[agent_id] = AgentProfile(
+                    agent_id=agent_id,
+                    name=data["name"],
+                    archetype=archetype,
+                    strategy=strategy_map.get(archetype_str, StrategyType.TIT_FOR_TAT),
+                    cognitive_params=CognitiveParams(
+                        shadow_of_future=float(data.get("shadow_of_future", 0.8)),
+                        batna_score=float(data.get("batna_score", 0.5)),
+                        audience_cost=float(data.get("audience_cost", 0.5)),
+                    ),
+                    utility_goals=[
+                        UtilityGoal(
+                            topic=goal["topic"],
+                            weight=float(goal["weight"]),
+                        )
+                        for goal in data.get("utility_goals", [])
+                    ],
+                    private_mandate=data.get("private_mandate", "Achieve best outcome"),
+                )
+
+            logging.info("Generated %d agents from scenario", len(agents))
+            return agents
+
+        except Exception as e:  # pylint: disable=broad-except
+            # Fallback to generic agents if LLM fails
+            logging.error("Failed to generate agents from scenario: %s", e)
+            return self._get_fallback_agents(config)
+
+    def _get_fallback_agents(
+        self,
+        config: ScenarioConfig,
+    ) -> dict[str, AgentProfile]:
+        """Generate generic fallback agents when LLM fails."""
+        first_issue = (
+            config.negotiation_issues[0] if config.negotiation_issues else "resources"
+        )
+
+        return {
+            "agent_1": AgentProfile(
+                agent_id="agent_1",
+                name="Pragmatic Negotiator",
+                archetype=IRArchetype.REALISM,
+                strategy=StrategyType.TIT_FOR_TAT,
+                cognitive_params=CognitiveParams(
+                    shadow_of_future=0.8,
+                    batna_score=0.6,
+                    audience_cost=0.5,
+                ),
+                utility_goals=[UtilityGoal(topic=first_issue, weight=0.8)],
+                private_mandate="Achieve balanced agreement.",
+            ),
+            "agent_2": AgentProfile(
+                agent_id="agent_2",
+                name="Cooperative Mediator",
+                archetype=IRArchetype.LIBERALISM,
+                strategy=StrategyType.PAVLOV,
+                cognitive_params=CognitiveParams(
+                    shadow_of_future=0.9,
+                    batna_score=0.4,
+                    audience_cost=0.8,
+                ),
+                utility_goals=[UtilityGoal(topic=first_issue, weight=0.7)],
+                private_mandate="Build consensus and prevent conflict.",
+            ),
+            "agent_3": AgentProfile(
+                agent_id="agent_3",
+                name="Strategic Competitor",
+                archetype=IRArchetype.OFFENSIVE_REALISM,
+                strategy=StrategyType.GRIM_TRIGGER,
+                cognitive_params=CognitiveParams(
+                    shadow_of_future=0.7,
+                    batna_score=0.7,
+                    audience_cost=0.4,
+                ),
+                utility_goals=[UtilityGoal(topic=first_issue, weight=0.85)],
+                private_mandate="Secure strategic advantage.",
+            ),
+        }
 
     def generate_intent_bid(
         self,
@@ -225,6 +394,52 @@ class LLMService:
             "Act according to your archetype and parameters. "
             "Negotiate aggressively or cooperatively based on your strategy."
         )
+
+    def generate_intent_bids_parallel(
+        self,
+        agents: list[AgentProfile],
+        state: SimulationState,
+    ) -> list[IntentBid]:
+        """Generate IntentBids for all agents in parallel.
+
+        Uses ThreadPoolExecutor to make concurrent LLM calls,
+        significantly reducing total latency.
+
+        Args:
+            agents: List of agent profiles to generate bids for
+            state: Current simulation state
+
+        Returns:
+            List of IntentBid objects
+        """
+        bids = []
+
+        with ThreadPoolExecutor(max_workers=len(agents)) as executor:
+            # Submit all tasks
+            future_to_agent = {
+                executor.submit(self.generate_intent_bid, agent, state): agent
+                for agent in agents
+            }
+
+            # Collect results as they complete
+            for future in as_completed(future_to_agent):
+                agent = future_to_agent[future]
+                try:
+                    bid = future.result()
+                    bids.append(bid)
+                except Exception as e:  # pylint: disable=broad-except
+                    logging.error("Parallel bid generation failed for %s: %s", agent.name, e)
+                    # Fallback bid
+                    bids.append(IntentBid(
+                        agent_id=agent.agent_id,
+                        urgency=5.0,
+                        target_agent_id=None,
+                        proposed_move="stall",
+                        reasoning_trace=f"Fallback due to error: {str(e)}",
+                    ))
+
+        logging.info("Generated %d bids in parallel", len(bids))
+        return bids
 
 
 # Global singleton

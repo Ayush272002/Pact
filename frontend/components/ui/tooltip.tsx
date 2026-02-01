@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Tooltip component for displaying contextual information on hover.
+ * Built with Radix UI primitives with customisable positioning and animations.
+ */
+
 "use client"
 
 import * as React from "react"
