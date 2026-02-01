@@ -334,19 +334,7 @@ export default function SimulatePage() {
             <span className="text-zinc-200 border-b border-indigo-500 pb-1">
               Simulator
             </span>
-            <span className="hover:text-zinc-300 transition-colors cursor-pointer">
-              Protocol
-            </span>
-            <span className="hover:text-zinc-300 transition-colors cursor-pointer">
-              Ledger
-            </span>
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
-          <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-400 font-bold">
-            System Online
-          </span>
         </div>
       </nav>
 
@@ -361,13 +349,12 @@ export default function SimulatePage() {
             </div>
             <div className="flex items-end justify-between gap-4">
               <h1 className="text-5xl md:text-6xl font-light tracking-tight text-white leading-tight">
-                Initialize <span className="text-zinc-600 italic">Scenario.</span>
+                Initialise <span className="text-zinc-600 italic">Scenario.</span>
               </h1>
               <button
                 onClick={loadDemoScenario}
                 className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-full text-[11px] uppercase tracking-widest font-bold hover:bg-amber-500/20 transition-colors whitespace-nowrap"
               >
-                <Sparkles size={14} />
                 Load Demo
               </button>
             </div>
@@ -605,7 +592,7 @@ export default function SimulatePage() {
               disabled={isSubmitting}
               className="group relative px-14 py-5 overflow-hidden rounded-full bg-white text-black font-bold transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              <span className="relative z-10 flex items-center gap-3 uppercase text-[12px] tracking-[0.2em]">
+              <span className="relative z-10 flex items-center gap-3 uppercase text-[12px] tracking-[0.2em] cursor-pointer">
                 {isSubmitting ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
@@ -620,7 +607,7 @@ export default function SimulatePage() {
               <div className="absolute inset-0 bg-indigo-500 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
             </button>
             <p className="mt-10 text-[10px] uppercase tracking-[0.4em] text-zinc-700 font-bold">
-              Convergent Intelligence Protocol // v1.0.4
+              Convergent Intelligence Protocol
             </p>
           </footer>
         </div>
