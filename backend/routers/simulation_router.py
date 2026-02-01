@@ -5,6 +5,7 @@ Handles scenario creation, simulation control, and state retrieval.
 
 import asyncio
 import json
+import logging
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -37,16 +38,28 @@ class SimulationResponse(BaseModel):
 
 @router.post("/scenario/create", response_model=SimulationResponse)
 def create_scenario(request: CreateScenarioRequest) -> SimulationResponse:
-    """Initialise a new simulation scenario.
+    """Initialise the fixed Demo Scenario.
 
     Creates agents, sets up the negotiation context, and returns Epoch 0 state.
     """
+    # OVERRIDE: Force the specific Arctic Scenario config for the demo
+    # This ensures variable names are short (e.g. "revenue_share")
+    # and agents know exactly what to negotiate.
     config = ScenarioConfig(
-        scenario_name=request.scenario_name,
-        description=request.description,
-        negotiation_issues=request.negotiation_issues,
-        global_volatility=request.global_volatility,
-        max_epochs=request.max_epochs,
+        scenario_name="Arctic Resource Treaty 2030",
+        description=(
+            "Negotiation between a Resource-Rich State, an Environmental Advocate, "
+            "and an Indigenous Coalition over Arctic oil extraction rights."
+        ),
+        negotiation_issues=[
+            "revenue_share",  # 0.0-1.0 (Percentage)
+            "environmental_strictness",  # 0.0-1.0 (Percentage)
+            "indigenous_autonomy",  # 0.0-1.0 (Control %)
+            "extraction_capacity",  # 0.0-1.0 (Volume)
+            "infrastructure_fund",  # 0.0-1.0 ($ Billions)
+        ],
+        global_volatility=0.3,
+        max_epochs=12,
     )
 
     state = simulation_service.create_simulation(config)
@@ -114,14 +127,15 @@ async def stream_simulation(simulation_id: str) -> StreamingResponse:
     async def event_generator():
         """Generate SSE events for simulation updates."""
         loop = asyncio.get_event_loop()
-        
-        for _ in range(10):
+        final_status = "COMPLETE"
+
+        for _ in range(20):  # Max epochs as safety limit
             try:
                 # Run blocking step() in thread pool to avoid blocking event loop
                 new_state = await loop.run_in_executor(
                     None,  # Use default executor
                     simulation_service.step,
-                    simulation_id
+                    simulation_id,
                 )
                 last_msg = new_state.chat_history[-1]
 
@@ -141,6 +155,7 @@ async def stream_simulation(simulation_id: str) -> StreamingResponse:
                     "nash_product": new_state.nash_product,
                     "agent_capitals": agent_capitals,
                     "treaty_values": new_state.current_treaty.issue_values,
+                    "status": new_state.status,
                 }
                 yield f"data: {json.dumps(event_data)}\n\n"
 
@@ -150,17 +165,20 @@ async def stream_simulation(simulation_id: str) -> StreamingResponse:
                 }
                 yield f"data: {json.dumps(alliance_data)}\n\n"
 
+                # Check for terminal states
+                if new_state.status in ("CONSENSUS_REACHED", "DEADLOCK"):
+                    final_status = new_state.status
+                    break
+
                 await asyncio.sleep(0.5)
 
             except ValueError:
                 break
             except Exception as e:
-                # Log error and continue or break
-                import logging
-                logging.error(f"SSE stream error: {e}")
+                logging.error("SSE stream error: %s", e)
                 break
 
-        yield 'data: {"type": "simulation_complete"}\n\n'
+        yield f'data: {{"type": "simulation_complete", "status": "{final_status}"}}\n\n'
 
     return StreamingResponse(
         event_generator(),

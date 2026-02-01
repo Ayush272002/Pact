@@ -3,20 +3,18 @@
 Handles agent instantiation, turn execution, and state management.
 """
 
+import logging
 import random
 import uuid
 
 from schemas import (
     AgentProfile,
-    CognitiveParams,
     DiplomaticMessage,
     IntentBid,
-    IRArchetype,
     ScenarioConfig,
     ShockType,
     SimulationState,
-    StrategyType,
-    UtilityGoal,
+    TreatyState,
 )
 from services.llm_service import llm_service
 
@@ -26,6 +24,10 @@ RECENCY_PENALTY_FACTOR = 2.0
 
 # Consensus detection
 CONSENSUS_URGENCY_THRESHOLD = 2.0
+
+# Simulation limits
+MAX_EPOCHS = 15
+BASE_TENSION = 0.05  # Minimum tension floor (never shows 0%)
 
 
 class SimulationService:
@@ -49,13 +51,23 @@ class SimulationService:
         """
         agents = self._create_default_agents(config)
 
+        # FIX: Force initial values to 0.5 (50%) so they don't look broken (0%)
+        # if the agents fail to update them immediately.
+        initial_treaty = TreatyState(
+            issue_values={issue: 0.5 for issue in config.negotiation_issues},
+        )
+
         state = SimulationState(
             simulation_id=str(uuid.uuid4()),
             agents=agents,
             current_epoch=0,
             global_tension=0.3,
             volatility=config.global_volatility,
+            current_treaty=initial_treaty,
         )
+
+        # Calculate initial Nash Product so the delta isn't +0.000
+        state.nash_product = self._calculate_nash_product(state)
 
         self._simulations[state.simulation_id] = state
         return state
@@ -93,14 +105,149 @@ class SimulationService:
         # === PHASE A: THINK ===
         bids = self._generate_intent_bids(state)
 
-        # Check for consensus: if no one wants to speak urgently, end simulation
+        # === PRIORITY 1: Check for consensus FIRST (before epoch limit) ===
+        # Check urgency threshold
         max_urgency = max(bid.urgency for bid in bids)
-        if max_urgency < CONSENSUS_URGENCY_THRESHOLD:
+        urgency_consensus = max_urgency < CONSENSUS_URGENCY_THRESHOLD
+
+        # Check for agreement keywords in recent messages
+        # Only check after minimum 5 epochs to avoid premature consensus
+        keyword_consensus = False
+        if state.current_epoch >= 5 and len(state.chat_history) >= 3:
+            recent_messages = state.chat_history[-4:]  # Last 4 messages
+            last_message = state.chat_history[-1]
+            last_msg_lower = last_message.content.lower()
+
+            # === BLOCKER: Negative keywords in last message = NO consensus ===
+            # If the most recent speaker is rejecting, we cannot declare consensus
+            rejection_keywords = [
+                "insufficient",
+                "unacceptable",
+                "reject",
+                "refuse",
+                "counter",
+                "cannot accept",
+                "will not accept",
+                "too low",
+                "too high",
+                "demand",
+                "must have",
+                "non-negotiable",
+                "we counter",
+            ]
+            last_message_rejects = any(
+                word in last_msg_lower for word in rejection_keywords
+            )
+
+            # If the last message is a rejection, skip all consensus checks
+            if not last_message_rejects:
+                # === METHOD 1: Strong finalization signals (any one = consensus) ===
+                finalization_phrases = [
+                    "prepared to finalize",
+                    "ready to finalize",
+                    "ready to sign",
+                    "let us finalize",
+                    "we can finalize",
+                    "formal acceptance",
+                    "treaty is acceptable",
+                    "deal is acceptable",
+                ]
+
+                has_finalization = any(
+                    any(
+                        phrase in msg.content.lower() for phrase in finalization_phrases
+                    )
+                    for msg in recent_messages
+                )
+
+                # === METHOD 2: Consecutive agreement keywords (n-1 in a row = consensus) ===
+                # Simple keywords that indicate positive sentiment toward agreement
+                agreement_keywords = [
+                    "accept",
+                    "agree",
+                    "commit",
+                    "consensus",
+                    "convergence",
+                    "acknowledge",
+                    "support",
+                    "endorse",
+                    "approve",
+                    "ratify",
+                    "constructive",
+                    "progress",
+                    "framework",
+                    "settlement",
+                    "secures",
+                    "stability",
+                    "balanced",
+                ]
+
+                # Count consecutive messages with agreement keywords
+                consecutive_agreements = 0
+                for msg in reversed(recent_messages):
+                    msg_lower = msg.content.lower()
+                    if any(word in msg_lower for word in agreement_keywords):
+                        consecutive_agreements += 1
+                    else:
+                        break  # Chain broken
+
+                # === METHOD 3: High density of agreement (n-1 of last 4 messages) ===
+                agreement_density = sum(
+                    any(word in msg.content.lower() for word in agreement_keywords)
+                    for msg in recent_messages
+                )
+
+                # Dynamic threshold: need n-1 agents agreeing (supermajority)
+                # For 3 agents: need 2, for 4 agents: need 3, for 2 agents: need 2 (min)
+                n_agents = len(state.agents)
+                required_agreements = max(2, n_agents - 1)
+
+                # Consensus if ANY method triggers:
+                # - Any finalization phrase
+                # - n-1 consecutive agreement messages (supermajority)
+                # - n-1 of last 4 messages have agreement keywords
+                keyword_consensus = (
+                    has_finalization
+                    or consecutive_agreements >= required_agreements
+                    or agreement_density >= required_agreements
+                )
+
+        # If consensus detected by either method, end successfully
+        if urgency_consensus or keyword_consensus:
             state.status = "CONSENSUS_REACHED"
+            # Drop tension to "relief" state for satisfying visual arc
+            state.global_tension = 0.05
+            return state
+
+        # === PRIORITY 2: Check for epoch limit (only if no consensus) ===
+        if state.current_epoch >= MAX_EPOCHS:
+            state.status = "DEADLOCK"
+            # Inject system message about failed negotiations
+            state.chat_history.append(
+                DiplomaticMessage(
+                    agent_id="SYSTEM",
+                    epoch=state.current_epoch,
+                    content="Negotiations have expired without agreement. The Treaty fails.",
+                    sentiment_delta=-0.2,
+                    game_move=None,
+                )
+            )
             return state
 
         # === PHASE B: SELECT ===
         speaker_id = self._select_speaker(state, bids)
+
+        # === ABSOLUTE FAILSAFE: Force rotation if somehow same speaker selected ===
+        last_speaker = state.chat_history[-1].agent_id if state.chat_history else None
+        if speaker_id == last_speaker:
+            logging.warning(
+                "ECHO FAILSAFE TRIGGERED: %s was about to speak twice. Forcing rotation.",
+                speaker_id,
+            )
+            # Pick any other agent that's not the last speaker
+            other_agents = [aid for aid in state.agents.keys() if aid != last_speaker]
+            if other_agents:
+                speaker_id = other_agents[0]
 
         # === PHASE C: ACT ===
         message = self._generate_diplomatic_message(state, speaker_id)
@@ -112,8 +259,11 @@ class SimulationService:
         # Update global tension based on sentiment
         self._update_global_tension(state, message.sentiment_delta)
 
-        # Update treaty state if there's a numeric proposal
-        if message.game_move and message.game_move.numeric_proposal:
+        # Update treaty state from structured treaty_updates (preferred)
+        if message.treaty_updates and message.treaty_updates.issue_updates:
+            self._update_treaty_state(state, message.treaty_updates.issue_updates)
+        # Fallback: also check numeric_proposal for backwards compatibility
+        elif message.game_move and message.game_move.numeric_proposal:
             self._update_treaty_state(state, message.game_move.numeric_proposal)
 
         # Calculate Nash Product (joint utility)
@@ -134,21 +284,39 @@ class SimulationService:
         state: SimulationState,
         bids: list[IntentBid],
     ) -> str:
-        """Select speaker based on urgency with recency penalties (Phase B)."""
+        """Select speaker based on urgency with strict anti-echo enforcement.
+
+        Hard-bans the immediate previous speaker to prevent double-speaking,
+        then applies soft penalties for other recent speakers (2+ turns ago).
+        """
+        # 1. Identify the immediate previous speaker
+        last_speaker = state.chat_history[-1].agent_id if state.chat_history else None
+
+        # 2. FILTER THEM OUT ENTIRELY (Hard Ban)
+        # This prevents the "E10... E11..." double-speak bug
+        candidates = [bid for bid in bids if bid.agent_id != last_speaker]
+
+        # Safety fallback: If everyone is banned (rare/impossible), reset
+        if not candidates:
+            candidates = bids
+
+        # 3. Soft penalty for speakers from 2+ turns ago (to encourage rotation)
+        # Note: We slice to [-RECENCY_PENALTY_TURNS:-1] to EXCLUDE the last speaker
         recent_speakers = [
-            msg.agent_id for msg in state.chat_history[-RECENCY_PENALTY_TURNS:]
+            msg.agent_id for msg in state.chat_history[-RECENCY_PENALTY_TURNS:-1]
         ]
 
         adjusted_bids = []
-        for bid in bids:
+        for bid in candidates:
             adjusted_urgency = bid.urgency
-
             if bid.agent_id in recent_speakers:
-                penalty_count = recent_speakers.count(bid.agent_id)
-                adjusted_urgency -= penalty_count * RECENCY_PENALTY_FACTOR
+                # Deduct urgency if they spoke recently (but not immediately last)
+                adjusted_urgency -= RECENCY_PENALTY_FACTOR
 
+            # Ensure non-negative
             adjusted_bids.append((bid.agent_id, max(0.0, adjusted_urgency)))
 
+        # 4. Pick winner
         return max(adjusted_bids, key=lambda x: x[1])[0]
 
     def _generate_diplomatic_message(
@@ -216,7 +384,8 @@ class SimulationService:
         so we SUBTRACT it from tension (good vibes = lower tension).
         """
         state.global_tension -= sentiment_delta  # Positive sentiment reduces tension
-        state.global_tension = max(0.0, min(1.0, state.global_tension))
+        # Clamp to [BASE_TENSION, 1.0] -- never show 0% (looks fake)
+        state.global_tension = max(BASE_TENSION, min(1.0, state.global_tension))
 
     def _deduct_political_capital(
         self,
@@ -251,11 +420,33 @@ class SimulationService:
     def _update_treaty_state(
         self,
         state: SimulationState,
-        proposal: dict[str, float],
+        proposal: dict[str, float | bool],
     ) -> None:
-        """Update treaty state with new proposals."""
+        """Update treaty state with new proposals.
+
+        Handles normalisation of values:
+        - Percentages > 1.0 are divided by 100 (e.g. 40 -> 0.40)
+        - Booleans are converted to 1.0/0.0 for consistent display
+        - Only updates issues that exist in the initial treaty
+        """
+        valid_issues = set(state.current_treaty.issue_values.keys())
+
         for issue, value in proposal.items():
-            state.current_treaty.issue_values[issue] = value
+            # Skip unknown issues (prevents hallucinated keys)
+            if issue not in valid_issues:
+                continue
+
+            # Normalise the value
+            if isinstance(value, bool):
+                normalised = 1.0 if value else 0.0
+            elif isinstance(value, (int, float)):
+                # If > 1.0, assume it's a percentage that needs dividing
+                normalised = float(value) / 100.0 if value > 1.0 else float(value)
+            else:
+                continue  # Skip invalid types
+
+            state.current_treaty.issue_values[issue] = normalised
+
         state.current_treaty.last_updated_epoch = state.current_epoch
 
     def _calculate_nash_product(self, state: SimulationState) -> float:

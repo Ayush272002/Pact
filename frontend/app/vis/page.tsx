@@ -7,19 +7,12 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import * as d3 from "d3";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Activity,
-  Zap,
-  Eye,
-  EyeOff,
-  Play,
-  RotateCcw,
-  Loader2,
-} from "lucide-react";
+import { Eye, EyeOff, Play, Loader2, CheckCircle2, X } from "lucide-react";
 
 /** Base URL for the backend API. */
 const API_BASE_URL =
@@ -86,6 +79,98 @@ function highlightNegotiationTerms(text: string): React.ReactNode {
       )}
     </>
   );
+}
+
+/**
+ * Formats a treaty value for display.
+ * Handles percentages (0-1), monetary values, and booleans.
+ */
+function formatTreatyValue(value: number, key: string): string {
+  const keyLower = key.toLowerCase();
+
+  // Boolean-like values (0 or 1)
+  if (value === 0 || value === 1) {
+    const boolKeys = [
+      "binding",
+      "veto",
+      "authority",
+      "enabled",
+      "required",
+      "mandatory",
+    ];
+    if (boolKeys.some((k) => keyLower.includes(k))) {
+      return value === 1 ? "YES" : "NO";
+    }
+  }
+
+  // Monetary values: keys containing investment/fund/budget/cost
+  const moneyKeys = [
+    "investment",
+    "fund",
+    "budget",
+    "cost",
+    "spending",
+    "capital",
+  ];
+  if (moneyKeys.some((k) => keyLower.includes(k))) {
+    // Assume value is in billions if small, raw if large
+    if (value > 1_000_000) {
+      return `$${(value / 1_000_000_000).toFixed(1)}B`;
+    }
+    return `$${value.toFixed(1)}B`;
+  }
+
+  // Large numbers (likely monetary values in raw form)
+  if (value > 1_000_000) {
+    return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  }
+
+  // Values between 0 and 1 are percentages
+  if (value >= 0 && value <= 1) {
+    return `${(value * 100).toFixed(0)}%`;
+  }
+
+  // Values between 1 and 100 might already be percentages
+  if (value > 1 && value <= 100) {
+    return `${value.toFixed(0)}%`;
+  }
+
+  // Default: show as decimal
+  return value.toFixed(1);
+}
+
+/**
+ * Cleans a treaty key for display.
+ * Removes verbose phrasing like "Secure X% of..." and extracts the core concept.
+ */
+function formatTreatyKey(key: string): string {
+  let cleaned = key.replace(/_/g, " ");
+
+  // Remove common verbose prefixes
+  const prefixes = [
+    /^secure\s+\d+%?\s*(of\s+)?/i,
+    /^establish\s+(binding\s+)?/i,
+    /^gain\s+(majority\s+)?/i,
+    /^minimise\s+/i,
+    /^minimize\s+/i,
+    /^protect\s+/i,
+    /^ensure\s+/i,
+    /^maintain\s+/i,
+    /^achieve\s+/i,
+    /^obtain\s+/i,
+  ];
+
+  for (const prefix of prefixes) {
+    cleaned = cleaned.replace(prefix, "");
+  }
+
+  // Truncate if still too long (max 35 chars)
+  if (cleaned.length > 35) {
+    cleaned = cleaned.slice(0, 32) + "...";
+  }
+
+  // Capitalise first letter
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
 /**
@@ -213,6 +298,9 @@ export default function NexusPage() {
   const [globalTension, setGlobalTension] = useState(0.5);
   const [nashProduct, setNashProduct] = useState(0);
   const [prevNashProduct, setPrevNashProduct] = useState(0); // Track previous for delta
+  const [initialNashProduct, setInitialNashProduct] = useState<number | null>(
+    null,
+  ); // Track starting value
   const [nashHistory, setNashHistory] = useState<number[]>([]); // History for sparkline
   const [status, setStatus] = useState("INITIALISING");
   const [lastSpeakingAgent, setLastSpeakingAgent] = useState<string | null>(
@@ -232,6 +320,10 @@ export default function NexusPage() {
   // Treaty state (real data from backend)
   const [treatyValues, setTreatyValues] = useState<Record<string, number>>({});
 
+  // Consensus Reached modal state
+  const [showProtocolModal, setShowProtocolModal] = useState(false);
+  const [modalDismissed, setModalDismissed] = useState(false);
+
   /**
    * Fetch initial simulation state from backend.
    */
@@ -242,7 +334,11 @@ export default function NexusPage() {
       const response = await fetch(
         `${API_BASE_URL}/simulation/${simulationId}/state`,
       );
-      if (!response.ok) throw new Error("Failed to fetch simulation state");
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Fetch failed (${response.status}):`, errorText);
+        throw new Error(`Failed to fetch simulation state: ${response.status}`);
+      }
 
       const data = await response.json();
       // Backend wraps state in { success, state: {...} }
@@ -266,8 +362,8 @@ export default function NexusPage() {
           id: agent.agent_id,
           name: agent.name,
           group: agent.archetype,
-          val: 15 + (agent.political_capital / 10),  // Size based on political capital
-          sentiment: 0,  // Will be updated from chat history
+          val: 15 + agent.political_capital / 10, // Size based on political capital
+          sentiment: 0, // Will be updated from chat history
           politicalCapital: agent.political_capital,
           privateMandate: agent.private_mandate,
         }));
@@ -277,8 +373,10 @@ export default function NexusPage() {
 
       // Transform alliances to links - only include links where both nodes exist
       const allianceLinks: Link[] = (state.active_alliances || [])
-        .filter(([source, target]) => 
-          validNodeIds.has(source as string) && validNodeIds.has(target as string)
+        .filter(
+          ([source, target]) =>
+            validNodeIds.has(source as string) &&
+            validNodeIds.has(target as string),
         )
         .map(([source, target, strength]) => ({
           source: source as string,
@@ -300,10 +398,17 @@ export default function NexusPage() {
       setCurrentEpoch(state.current_epoch);
       setGlobalTension(state.global_tension);
       setNashProduct(state.nash_product);
-      // Use status field directly from backend
-      setStatus(state.status === "COMPLETE" || state.status === "CONSENSUS_REACHED" ? "COMPLETE" : "READY");
+      // Set initial Nash Product for delta tracking
+      if (state.nash_product > 0 && initialNashProduct === null) {
+        setInitialNashProduct(state.nash_product);
+      }
+      setStatus(state.status);
       if (state.current_treaty?.issue_values) {
         setTreatyValues(state.current_treaty.issue_values);
+      }
+      // Auto-show modal if consensus already reached
+      if (state.status === "CONSENSUS_REACHED") {
+        setShowProtocolModal(true);
       }
       setIsLoading(false);
     } catch (error) {
@@ -320,14 +425,17 @@ export default function NexusPage() {
     if (!simulationId || isStreaming) return;
 
     setIsStreaming(true);
-    
+
     try {
-      const response = await fetch(`${API_BASE_URL}/simulation/${simulationId}/stream`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'text/event-stream',
+      const response = await fetch(
+        `${API_BASE_URL}/simulation/${simulationId}/stream`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "text/event-stream",
+          },
         },
-      });
+      );
 
       if (!response.ok) {
         throw new Error(`Stream failed: ${response.status}`);
@@ -335,61 +443,90 @@ export default function NexusPage() {
 
       const reader = response.body?.getReader();
       if (!reader) {
-        throw new Error('No response body');
+        throw new Error("No response body");
       }
 
       const decoder = new TextDecoder();
-      let buffer = '';
+      let buffer = "";
 
       const processEvents = (text: string) => {
-        const lines = text.split('\n');
+        const lines = text.split("\n");
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
+          if (line.startsWith("data: ")) {
             try {
               const data = JSON.parse(line.slice(6));
-              
+
               if (data.type === "message_added") {
+                // Update metrics with delta tracking
                 setCurrentEpoch(data.epoch);
                 setGlobalTension(data.global_tension);
                 setPrevNashProduct(nashProduct);
                 setNashProduct(data.nash_product);
-                setNashHistory((prev) => [...prev.slice(-9), data.nash_product]);
+                // Set initial Nash Product on first meaningful value
+                setInitialNashProduct((prev) =>
+                  prev === null && data.nash_product > 0
+                    ? data.nash_product
+                    : prev,
+                );
+                setNashHistory((prev) => [
+                  ...prev.slice(-9),
+                  data.nash_product,
+                ]);
                 setLastSpeakingAgent(data.agent_id);
                 setTimeout(() => setLastSpeakingAgent(null), 1500);
 
-                setChatHistory((prev) => [...prev, {
-                  agentId: data.agent_id,
-                  epoch: data.epoch,
-                  content: data.content,
-                  sentimentDelta: data.sentiment_delta,
-                }]);
+                setChatHistory((prev) => [
+                  ...prev,
+                  {
+                    agentId: data.agent_id,
+                    epoch: data.epoch,
+                    content: data.content,
+                    sentimentDelta: data.sentiment_delta,
+                  },
+                ]);
 
-                setNodes((prev) => prev.map((node) => {
-                  const newCapital = data.agent_capitals?.[node.id] ?? node.politicalCapital;
-                  return {
-                    ...node,
-                    sentiment: node.id === data.agent_id
-                      ? Math.max(-1, Math.min(1, node.sentiment + data.sentiment_delta))
-                      : node.sentiment,
-                    politicalCapital: newCapital,
-                    val: 15 + (newCapital / 10),
-                  };
-                }));
+                setNodes((prev) =>
+                  prev.map((node) => {
+                    const newCapital =
+                      data.agent_capitals?.[node.id] ?? node.politicalCapital;
+                    return {
+                      ...node,
+                      sentiment:
+                        node.id === data.agent_id
+                          ? Math.max(
+                              -1,
+                              Math.min(1, node.sentiment + data.sentiment_delta),
+                            )
+                          : node.sentiment,
+                      politicalCapital: newCapital,
+                      val: 15 + newCapital / 10,
+                    };
+                  }),
+                );
 
-                if (data.treaty_values && Object.keys(data.treaty_values).length > 0) {
+                if (
+                  data.treaty_values &&
+                  Object.keys(data.treaty_values).length > 0
+                ) {
                   setTreatyValues(data.treaty_values);
                 }
-              }
-              else if (data.type === "coalitions_detected") {
-                const newLinks: Link[] = data.alliances.map(([source, target, strength]: [string, string, number]) => ({
-                  source,
-                  target,
-                  strength,
-                }));
+
+                // Update status from SSE (tracks CONSENSUS_REACHED, DEADLOCK, etc.)
+                if (data.status) {
+                  setStatus(data.status);
+                }
+              } else if (data.type === "coalitions_detected") {
+                const newLinks: Link[] = data.alliances.map(
+                  ([source, target, strength]: [string, string, number]) => ({
+                    source,
+                    target,
+                    strength,
+                  }),
+                );
                 setLinks(newLinks);
-              }
-              else if (data.type === "simulation_complete") {
-                setStatus("COMPLETE");
+              } else if (data.type === "simulation_complete") {
+                // Use actual status from backend (CONSENSUS_REACHED, DEADLOCK, or COMPLETE)
+                setStatus(data.status || "COMPLETE");
                 setIsStreaming(false);
                 return true; // Signal completion
               }
@@ -405,13 +542,13 @@ export default function NexusPage() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         buffer += decoder.decode(value, { stream: true });
-        
+
         // Process complete events (ending with double newline)
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || ''; // Keep incomplete part in buffer
-        
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || ""; // Keep incomplete part in buffer
+
         for (const part of parts) {
           if (processEvents(part)) {
             reader.cancel();
@@ -419,15 +556,14 @@ export default function NexusPage() {
           }
         }
       }
-      
+
       // Process any remaining buffer
       if (buffer) {
         processEvents(buffer);
       }
-      
+
       setIsStreaming(false);
       setStatus("COMPLETE");
-      
     } catch (error) {
       console.error("Stream error:", error);
       setIsStreaming(false);
@@ -467,6 +603,19 @@ export default function NexusPage() {
     }
     fetchSimulationState();
   }, [simulationId, router, fetchSimulationState]);
+
+  // Auto-show Consensus Reached modal when consensus reached (only once)
+  useEffect(() => {
+    if (
+      status === "CONSENSUS_REACHED" &&
+      !showProtocolModal &&
+      !modalDismissed
+    ) {
+      // Small delay for dramatic effect
+      const timer = setTimeout(() => setShowProtocolModal(true), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [status, showProtocolModal, modalDismissed]);
 
   // D3 force simulation -- re-render when nodes/links change
   useEffect(() => {
@@ -624,9 +773,10 @@ export default function NexusPage() {
     });
 
     // Zoom and pan behavior
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.2, 4])  // Allow zoom from 20% to 400%
-      .on("start", function(event) {
+    const zoom = d3
+      .zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.2, 4]) // Allow zoom from 20% to 400%
+      .on("start", function (event) {
         // Change cursor when panning
         if (event.sourceEvent && event.sourceEvent.type !== "wheel") {
           d3.select(this).style("cursor", "grabbing");
@@ -635,15 +785,16 @@ export default function NexusPage() {
       .on("zoom", (event) => {
         graphContainer.attr("transform", event.transform);
       })
-      .on("end", function() {
+      .on("end", function () {
         d3.select(this).style("cursor", "grab");
       });
 
     // Apply zoom to SVG, but filter so node drags don't trigger pan
-    svg.call(zoom)
-      .on("dblclick.zoom", null);  // Disable double-click to zoom
+    svg.call(zoom).on("dblclick.zoom", null); // Disable double-click to zoom
 
-    function dragstarted(event: d3.D3DragEvent<SVGGElement, AgentNode, AgentNode>) {
+    function dragstarted(
+      event: d3.D3DragEvent<SVGGElement, AgentNode, AgentNode>,
+    ) {
       // Stop the zoom behavior from interfering with node drags
       event.sourceEvent.stopPropagation();
       if (!event.active) simulation.alphaTarget(0.3).restart();
@@ -693,9 +844,14 @@ export default function NexusPage() {
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold tracking-widest uppercase">
-                  Pact
-                </h2>
+                <Link
+                  href="/"
+                  className="hover:text-indigo-400 transition-colors"
+                >
+                  <h2 className="text-lg font-bold tracking-widest uppercase">
+                    Pact
+                  </h2>
+                </Link>
                 {isStreaming && (
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 )}
@@ -707,22 +863,48 @@ export default function NexusPage() {
             <Badge
               variant="outline"
               className={
-                status === "COMPLETE"
-                  ? "text-amber-400 border-amber-500/20 bg-amber-500/5"
-                  : isStreaming
-                    ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/5"
-                    : "text-zinc-400 border-zinc-500/20 bg-zinc-500/5"
+                status === "CONSENSUS_REACHED"
+                  ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/5"
+                  : status === "DEADLOCK"
+                    ? "text-red-400 border-red-500/20 bg-red-500/5"
+                    : status === "COMPLETE"
+                      ? "text-amber-400 border-amber-500/20 bg-amber-500/5"
+                      : isStreaming
+                        ? "text-indigo-400 border-indigo-500/20 bg-indigo-500/5"
+                        : "text-zinc-400 border-zinc-500/20 bg-zinc-500/5"
               }
             >
-              {status === "COMPLETE"
-                ? "Complete"
-                : isStreaming
-                  ? "Live"
-                  : "Ready"}
+              {status === "CONSENSUS_REACHED"
+                ? "Treaty Signed"
+                : status === "DEADLOCK"
+                  ? "Deadlock"
+                  : status === "COMPLETE"
+                    ? "Complete"
+                    : isStreaming
+                      ? "Live"
+                      : "Ready"}
             </Badge>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            {!isStreaming ? (
+            {status === "CONSENSUS_REACHED" ? (
+              <Button
+                size="sm"
+                className="col-span-2 bg-emerald-600 text-white text-xs hover:bg-emerald-700"
+                onClick={() => setShowProtocolModal(true)}
+              >
+                <CheckCircle2 size={12} className="mr-1" />
+                RATIFIED — View Treaty
+              </Button>
+            ) : status === "DEADLOCK" ? (
+              <Button
+                size="sm"
+                className="col-span-2 bg-red-900/50 text-red-100 text-xs cursor-not-allowed border border-red-500/30"
+                disabled
+              >
+                <X size={12} className="mr-1" />
+                DEADLOCK — No Agreement
+              </Button>
+            ) : !isStreaming ? (
               <>
                 <Button
                   size="sm"
@@ -899,17 +1081,21 @@ export default function NexusPage() {
                 >
                   {nashProduct < 0.01 ? "0.00" : nashProduct.toFixed(2)}
                 </p>
+                {/* Show delta from initial value */}
                 {nashProduct >= 0.01 &&
-                  prevNashProduct >= 0.01 &&
-                  nashProduct !== prevNashProduct && (
+                  initialNashProduct !== null &&
+                  initialNashProduct > 0 && (
                     <span
                       className={`text-xs font-medium font-mono ${
-                        nashProduct > prevNashProduct
+                        nashProduct > initialNashProduct
                           ? "text-emerald-400"
-                          : "text-red-400"
+                          : nashProduct < initialNashProduct
+                            ? "text-red-400"
+                            : "text-zinc-500"
                       }`}
                     >
-                      {nashProduct > prevNashProduct ? "▲" : "▼"}
+                      ({nashProduct > initialNashProduct ? "+" : ""}
+                      {(nashProduct - initialNashProduct).toFixed(2)})
                     </span>
                   )}
               </div>
@@ -951,7 +1137,7 @@ export default function NexusPage() {
 
         {/* Draft State Widget -- Shows real treaty values from backend */}
         {Object.keys(treatyValues).length > 0 && (
-          <div className="absolute bottom-8 left-8 z-10 bg-zinc-900/70 backdrop-blur-md border border-zinc-700/50 rounded-lg p-4 min-w-50 font-mono shadow-xl">
+          <div className="absolute bottom-20 left-8 z-50 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 rounded-lg p-4 min-w-50 font-mono shadow-xl">
             <div className="text-zinc-400 border-b border-zinc-700 mb-3 pb-2 text-[10px] uppercase tracking-widest">
               Current Draft Terms
             </div>
@@ -961,13 +1147,14 @@ export default function NexusPage() {
                   key={key}
                   className="flex justify-between items-center text-xs"
                 >
-                  <span className="text-teal-400">
-                    {key.replace(/_/g, " ")}
+                  <span
+                    className="text-teal-400"
+                    title={key.replace(/_/g, " ")}
+                  >
+                    {formatTreatyKey(key)}
                   </span>
                   <span className="text-white font-medium">
-                    {typeof value === "number" && value < 1
-                      ? `${(value * 100).toFixed(0)}%`
-                      : value.toFixed(1)}
+                    {formatTreatyValue(value, key)}
                   </span>
                 </div>
               ))}
@@ -976,7 +1163,7 @@ export default function NexusPage() {
         )}
 
         {/* Graph Legend */}
-        <div className="absolute bottom-8 right-8 z-10 bg-zinc-900/70 backdrop-blur-md border border-white/10 rounded-lg p-3 space-y-2 shadow-xl">
+        <div className="absolute bottom-16 right-8 z-50 bg-zinc-900/80 backdrop-blur-sm border border-white/10 rounded-lg p-3 space-y-2 shadow-xl">
           <p className="text-[9px] uppercase tracking-widest text-zinc-500 mb-2">
             Legend
           </p>
@@ -1123,6 +1310,136 @@ export default function NexusPage() {
           </div>
         </ScrollArea>
       </aside>
+
+      {/* Consensus Reached Modal */}
+      {showProtocolModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+          <div className="bg-[#030303] border border-white/10 max-w-lg w-full max-h-[85vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="border-b border-white/5 px-6 py-4 flex items-center justify-between shrink-0">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="text-emerald-400" size={16} />
+                  <h2 className="text-xs font-semibold uppercase tracking-widest text-white">
+                    Consensus Reached
+                  </h2>
+                </div>
+                <p className="text-[10px] text-zinc-600 uppercase tracking-widest">
+                  ID: {simulationId?.slice(0, 8)} • Ratified at Epoch{" "}
+                  {currentEpoch}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowProtocolModal(false);
+                  setModalDismissed(true);
+                }}
+                className="text-zinc-600 hover:text-white transition-colors p-1"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Content - scrollable */}
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
+              {/* Section 1: Ratified Terms */}
+              <section>
+                <h3 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
+                  Ratified Terms
+                </h3>
+                <div className="space-y-px">
+                  {Object.entries(treatyValues).map(([key, finalValue]) => (
+                    <div
+                      key={key}
+                      className="flex items-center justify-between py-2 border-b border-white/5 last:border-0 group hover:bg-white/[0.02] transition-colors"
+                    >
+                      <span
+                        className="text-xs text-zinc-400 pr-4"
+                        title={key.replace(/_/g, " ")}
+                      >
+                        {formatTreatyKey(key)}
+                      </span>
+                      <span className="text-xs text-white font-mono shrink-0">
+                        {formatTreatyValue(finalValue, key)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Section 2: Signatories */}
+              <section>
+                <h3 className="text-[10px] text-zinc-500 uppercase tracking-widest mb-3">
+                  Signatories
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {nodes.map((node) => (
+                    <div
+                      key={node.id}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.02] border border-white/5 text-xs"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span className="text-white">{node.name}</span>
+                      <span className="text-zinc-600 text-[10px]">
+                        {node.group}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Metrics */}
+              <section className="grid grid-cols-2 gap-px bg-white/5">
+                <div className="p-4 bg-[#030303]">
+                  <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-1">
+                    Nash Product
+                  </p>
+                  <p className="text-2xl font-light text-white">
+                    {nashProduct.toFixed(3)}
+                    {initialNashProduct !== null && (
+                      <span
+                        className={`text-xs ml-2 ${nashProduct >= initialNashProduct ? "text-emerald-400" : "text-red-400"}`}
+                      >
+                        {nashProduct >= initialNashProduct ? "+" : ""}
+                        {(nashProduct - initialNashProduct).toFixed(3)}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="p-4 bg-[#030303]">
+                  <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-1">
+                    Final Tension
+                  </p>
+                  <p
+                    className={`text-2xl font-light ${
+                      globalTension < 0.3
+                        ? "text-emerald-400"
+                        : globalTension < 0.6
+                          ? "text-amber-400"
+                          : "text-red-400"
+                    }`}
+                  >
+                    {(globalTension * 100).toFixed(0)}%
+                  </p>
+                </div>
+              </section>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-white/5 px-6 py-4 flex justify-end shrink-0">
+              <Button
+                onClick={() => {
+                  setShowProtocolModal(false);
+                  setModalDismissed(true);
+                }}
+                className="bg-white text-black hover:bg-zinc-200 px-6 text-xs font-semibold uppercase tracking-wider"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
