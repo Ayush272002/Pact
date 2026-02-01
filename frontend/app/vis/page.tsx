@@ -204,7 +204,6 @@ export default function NexusPage() {
   const simulationId = searchParams.get("id");
 
   const d3Container = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Simulation state
   const [isLoading, setIsLoading] = useState(true);
@@ -246,32 +245,49 @@ export default function NexusPage() {
       if (!response.ok) throw new Error("Failed to fetch simulation state");
 
       const data = await response.json();
+      // Backend wraps state in { success, state: {...} }
       const state: SimulationState = data.state;
+      
+      if (!state || !state.agents) {
+        console.error("Invalid state response:", data);
+        setIsLoading(false);
+        return;
+      }
 
-      // Transform agents to nodes
-      const agentNodes: AgentNode[] = Object.values(state.agents).map(
-        (agent, idx) => ({
+      // Transform agents to nodes - deduplicate by agent_id
+      const seenIds = new Set<string>();
+      const agentNodes: AgentNode[] = Object.values(state.agents)
+        .filter((agent) => {
+          if (seenIds.has(agent.agent_id)) return false;
+          seenIds.add(agent.agent_id);
+          return true;
+        })
+        .map((agent) => ({
           id: agent.agent_id,
           name: agent.name,
           group: agent.archetype,
-          val: 15 + agent.political_capital / 10, // Size based on political capital
-          sentiment: 0, // Will be updated from chat history
+          val: 15 + (agent.political_capital / 10),  // Size based on political capital
+          sentiment: 0,  // Will be updated from chat history
           politicalCapital: agent.political_capital,
           privateMandate: agent.private_mandate,
-        }),
-      );
+        }));
 
-      // Transform alliances to links
-      const allianceLinks: Link[] = state.active_alliances.map(
-        ([source, target, strength]) => ({
+      // Create set of valid node IDs for filtering links
+      const validNodeIds = new Set(agentNodes.map((n) => n.id));
+
+      // Transform alliances to links - only include links where both nodes exist
+      const allianceLinks: Link[] = (state.active_alliances || [])
+        .filter(([source, target]) => 
+          validNodeIds.has(source as string) && validNodeIds.has(target as string)
+        )
+        .map(([source, target, strength]) => ({
           source: source as string,
           target: target as string,
           strength: strength as number,
-        }),
-      );
+        }));
 
       // Transform chat history
-      const messages: ChatMessage[] = state.chat_history.map((msg) => ({
+      const messages: ChatMessage[] = (state.chat_history || []).map((msg) => ({
         agentId: msg.agent_id,
         epoch: msg.epoch,
         content: msg.content,
@@ -284,7 +300,8 @@ export default function NexusPage() {
       setCurrentEpoch(state.current_epoch);
       setGlobalTension(state.global_tension);
       setNashProduct(state.nash_product);
-      setStatus(state.status);
+      // Use status field directly from backend
+      setStatus(state.status === "COMPLETE" || state.status === "CONSENSUS_REACHED" ? "COMPLETE" : "READY");
       if (state.current_treaty?.issue_values) {
         setTreatyValues(state.current_treaty.issue_values);
       }
@@ -297,95 +314,125 @@ export default function NexusPage() {
 
   /**
    * Start the SSE stream to receive real-time updates.
+   * Uses fetch with ReadableStream instead of EventSource for better CORS support.
    */
-  const startStream = useCallback(() => {
-    if (!simulationId || eventSourceRef.current) return;
+  const startStream = useCallback(async () => {
+    if (!simulationId || isStreaming) return;
 
     setIsStreaming(true);
-    const eventSource = new EventSource(
-      `${API_BASE_URL}/simulation/${simulationId}/stream`,
-    );
-    eventSourceRef.current = eventSource;
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/simulation/${simulationId}/stream`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'text/event-stream',
+        },
+      });
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        if (data.type === "message_added") {
-          // Update metrics with delta tracking
-          setCurrentEpoch(data.epoch);
-          setGlobalTension(data.global_tension);
-          setPrevNashProduct(nashProduct); // Store previous before updating
-          setNashProduct(data.nash_product);
-          setNashHistory((prev) => [...prev.slice(-9), data.nash_product]); // Keep last 10 for sparkline
-          setLastSpeakingAgent(data.agent_id); // Trigger pulse animation
-          setTimeout(() => setLastSpeakingAgent(null), 1500); // Clear after animation
-
-          // Add message to chat history
-          setChatHistory((prev) => [
-            ...prev,
-            {
-              agentId: data.agent_id,
-              epoch: data.epoch,
-              content: data.content,
-              sentimentDelta: data.sentiment_delta,
-            },
-          ]);
-
-          // Update node sentiment and political capital
-          setNodes((prev) =>
-            prev.map((node) => {
-              const newCapital =
-                data.agent_capitals?.[node.id] ?? node.politicalCapital;
-              return {
-                ...node,
-                sentiment:
-                  node.id === data.agent_id
-                    ? Math.max(
-                        -1,
-                        Math.min(1, node.sentiment + data.sentiment_delta),
-                      )
-                    : node.sentiment,
-                politicalCapital: newCapital,
-                val: 15 + newCapital / 10, // Update node size based on capital
-              };
-            }),
-          );
-
-          // Update treaty values
-          if (
-            data.treaty_values &&
-            Object.keys(data.treaty_values).length > 0
-          ) {
-            setTreatyValues(data.treaty_values);
-          }
-        } else if (data.type === "coalitions_detected") {
-          // Update alliances/links
-          const newLinks: Link[] = data.alliances.map(
-            ([source, target, strength]: [string, string, number]) => ({
-              source,
-              target,
-              strength,
-            }),
-          );
-          setLinks(newLinks);
-        } else if (data.type === "simulation_complete") {
-          setStatus("COMPLETE");
-          setIsStreaming(false);
-          eventSource.close();
-          eventSourceRef.current = null;
-        }
-      } catch (err) {
-        console.error("Error parsing SSE data:", err);
+      if (!response.ok) {
+        throw new Error(`Stream failed: ${response.status}`);
       }
-    };
 
-    eventSource.onerror = () => {
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const processEvents = (text: string) => {
+        const lines = text.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === "message_added") {
+                setCurrentEpoch(data.epoch);
+                setGlobalTension(data.global_tension);
+                setPrevNashProduct(nashProduct);
+                setNashProduct(data.nash_product);
+                setNashHistory((prev) => [...prev.slice(-9), data.nash_product]);
+                setLastSpeakingAgent(data.agent_id);
+                setTimeout(() => setLastSpeakingAgent(null), 1500);
+
+                setChatHistory((prev) => [...prev, {
+                  agentId: data.agent_id,
+                  epoch: data.epoch,
+                  content: data.content,
+                  sentimentDelta: data.sentiment_delta,
+                }]);
+
+                setNodes((prev) => prev.map((node) => {
+                  const newCapital = data.agent_capitals?.[node.id] ?? node.politicalCapital;
+                  return {
+                    ...node,
+                    sentiment: node.id === data.agent_id
+                      ? Math.max(-1, Math.min(1, node.sentiment + data.sentiment_delta))
+                      : node.sentiment,
+                    politicalCapital: newCapital,
+                    val: 15 + (newCapital / 10),
+                  };
+                }));
+
+                if (data.treaty_values && Object.keys(data.treaty_values).length > 0) {
+                  setTreatyValues(data.treaty_values);
+                }
+              }
+              else if (data.type === "coalitions_detected") {
+                const newLinks: Link[] = data.alliances.map(([source, target, strength]: [string, string, number]) => ({
+                  source,
+                  target,
+                  strength,
+                }));
+                setLinks(newLinks);
+              }
+              else if (data.type === "simulation_complete") {
+                setStatus("COMPLETE");
+                setIsStreaming(false);
+                return true; // Signal completion
+              }
+            } catch (parseErr) {
+              // Ignore parse errors for incomplete chunks
+            }
+          }
+        }
+        return false;
+      };
+
+      // Read stream
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process complete events (ending with double newline)
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || ''; // Keep incomplete part in buffer
+        
+        for (const part of parts) {
+          if (processEvents(part)) {
+            reader.cancel();
+            return;
+          }
+        }
+      }
+      
+      // Process any remaining buffer
+      if (buffer) {
+        processEvents(buffer);
+      }
+      
       setIsStreaming(false);
-      eventSource.close();
-      eventSourceRef.current = null;
-    };
-  }, [simulationId]);
+      setStatus("COMPLETE");
+      
+    } catch (error) {
+      console.error("Stream error:", error);
+      setIsStreaming(false);
+    }
+  }, [simulationId, isStreaming, nashProduct]);
 
   /**
    * Advance simulation by one step (manual control).
@@ -419,13 +466,6 @@ export default function NexusPage() {
       return;
     }
     fetchSimulationState();
-
-    // Cleanup on unmount
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-    };
   }, [simulationId, router, fetchSimulationState]);
 
   // D3 force simulation -- re-render when nodes/links change
@@ -445,11 +485,32 @@ export default function NexusPage() {
       .append("svg")
       .attr("width", "100%")
       .attr("height", "100%")
-      .attr("viewBox", [0, 0, width, height]);
+      .attr("viewBox", [0, 0, width, height])
+      .style("cursor", "grab");
+
+    // Create a container group for all graph elements (will be transformed by zoom/pan)
+    const graphContainer = svg.append("g").attr("class", "graph-container");
 
     // Create mutable copies for D3
     const nodesCopy = nodes.map((d) => ({ ...d }));
-    const linksCopy = links.map((d) => ({ ...d }));
+    
+    // Create a set of valid node IDs to filter links
+    const nodeIdSet = new Set(nodesCopy.map((n) => n.id));
+    
+    // Filter links to only include those referencing existing nodes
+    // Handle both string IDs and object references (D3 mutates these)
+    const linksCopy = links
+      .filter((l) => {
+        const sourceId = typeof l.source === "string" ? l.source : (l.source as AgentNode)?.id;
+        const targetId = typeof l.target === "string" ? l.target : (l.target as AgentNode)?.id;
+        return sourceId && targetId && nodeIdSet.has(sourceId) && nodeIdSet.has(targetId);
+      })
+      .map((d) => ({
+        ...d,
+        // Ensure source/target are strings for fresh D3 simulation
+        source: typeof d.source === "string" ? d.source : (d.source as AgentNode).id,
+        target: typeof d.target === "string" ? d.target : (d.target as AgentNode).id,
+      }));
 
     // Force Simulation -- tighter spacing for better visual density
     const nodeCount = nodesCopy.length;
@@ -469,14 +530,15 @@ export default function NexusPage() {
       .force("center", d3.forceCenter(width / 2, height / 2))
       .force(
         "collision",
-        d3.forceCollide().radius((d: AgentNode) => d.val + 15),
+        d3.forceCollide<AgentNode>().radius((d) => d.val + 15),
       )
       .force("x", d3.forceX(width / 2).strength(0.05))
       .force("y", d3.forceY(height / 2).strength(0.05));
 
-    // Draw Links -- colour based on alliance strength
-    const link = svg
+    // Draw Links -- colour based on alliance strength (inside graphContainer)
+    const link = graphContainer
       .append("g")
+      .attr("class", "links")
       .selectAll("line")
       .data(linksCopy)
       .join("line")
@@ -484,12 +546,14 @@ export default function NexusPage() {
       .attr("stroke-opacity", 0.6)
       .attr("stroke-width", (d) => Math.max(1, d.strength * 4));
 
-    // Draw Nodes
-    const node = svg
+    // Draw Nodes (inside graphContainer)
+    const node = graphContainer
       .append("g")
-      .selectAll("g")
+      .attr("class", "nodes")
+      .selectAll<SVGGElement, AgentNode>("g")
       .data(nodesCopy)
       .join("g")
+      .style("cursor", "pointer")
       .call(
         d3
           .drag<SVGGElement, AgentNode>()
@@ -551,17 +615,37 @@ export default function NexusPage() {
 
     simulation.on("tick", () => {
       link
-        .attr("x1", (d) => (d.source as AgentNode).x ?? 0)
-        .attr("y1", (d) => (d.source as AgentNode).y ?? 0)
-        .attr("x2", (d) => (d.target as AgentNode).x ?? 0)
-        .attr("y2", (d) => (d.target as AgentNode).y ?? 0);
+        .attr("x1", (d) => ((d.source as unknown) as AgentNode).x ?? 0)
+        .attr("y1", (d) => ((d.source as unknown) as AgentNode).y ?? 0)
+        .attr("x2", (d) => ((d.target as unknown) as AgentNode).x ?? 0)
+        .attr("y2", (d) => ((d.target as unknown) as AgentNode).y ?? 0);
 
       node.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
     });
 
-    function dragstarted(
-      event: d3.D3DragEvent<SVGGElement, AgentNode, AgentNode>,
-    ) {
+    // Zoom and pan behavior
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.2, 4])  // Allow zoom from 20% to 400%
+      .on("start", function(event) {
+        // Change cursor when panning
+        if (event.sourceEvent && event.sourceEvent.type !== "wheel") {
+          d3.select(this).style("cursor", "grabbing");
+        }
+      })
+      .on("zoom", (event) => {
+        graphContainer.attr("transform", event.transform);
+      })
+      .on("end", function() {
+        d3.select(this).style("cursor", "grab");
+      });
+
+    // Apply zoom to SVG, but filter so node drags don't trigger pan
+    svg.call(zoom)
+      .on("dblclick.zoom", null);  // Disable double-click to zoom
+
+    function dragstarted(event: d3.D3DragEvent<SVGGElement, AgentNode, AgentNode>) {
+      // Stop the zoom behavior from interfering with node drags
+      event.sourceEvent.stopPropagation();
       if (!event.active) simulation.alphaTarget(0.3).restart();
       event.subject.fx = event.subject.x;
       event.subject.fy = event.subject.y;
@@ -781,7 +865,7 @@ export default function NexusPage() {
       {/* CENTER: The Swarm Canvas */}
       <main className="flex-1 relative">
         {/* HUD Overlays -- Real-time metrics */}
-        <div className="absolute top-8 left-8 z-10 flex gap-12">
+        <div className="absolute top-8 left-8 z-10 flex gap-12 bg-zinc-950/80 backdrop-blur-md border border-white/5 rounded-xl px-6 py-4">
           <div>
             <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">
               Global Tension
@@ -933,22 +1017,22 @@ export default function NexusPage() {
       </main>
 
       {/* RIGHT SIDEBAR: Agent Insights */}
-      <aside className="w-1/6 border-l border-white/5 bg-zinc-950/20 hidden lg:flex flex-col">
-        <div className="p-5 border-b border-white/5">
+      <aside className="w-1/6 border-l border-white/5 bg-zinc-950/20 hidden lg:flex flex-col overflow-hidden h-screen">
+        <div className="p-5 border-b border-white/5 flex-shrink-0">
           <h4 className="text-[10px] uppercase tracking-widest text-zinc-500 font-medium">
             Negotiating Parties
           </h4>
         </div>
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 overflow-auto">
           <div className="p-4 space-y-4">
             {nodes.length === 0 ? (
               <p className="text-sm text-zinc-600 text-center py-8">
                 No agents loaded
               </p>
             ) : (
-              nodes.map((node) => (
+              nodes.map((node, idx) => (
                 <div
-                  key={node.id}
+                  key={`${node.id}-${idx}`}
                   className={`p-4 rounded-lg border transition-all ${
                     node.sentiment > 0.2
                       ? "border-emerald-500/20 bg-emerald-500/5"
