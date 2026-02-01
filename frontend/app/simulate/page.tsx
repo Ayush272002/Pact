@@ -26,7 +26,7 @@ import {
 
 /** Base URL for the backend API. */
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api";
 
 /** Demo scenario preset -- "Arctic Oil Treaty 2030". */
 const DEMO_SCENARIO = {

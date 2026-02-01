@@ -23,7 +23,7 @@ import {
 
 /** Base URL for the backend API. */
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api";
 
 /**
  * Applies semantic highlighting to negotiation text.
