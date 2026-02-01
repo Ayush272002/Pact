@@ -188,6 +188,7 @@ export default function NexusPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentEpoch, setCurrentEpoch] = useState(0);
+  const [isNextEpochLoading, setIsNextEpochLoading] = useState(false);
   const [globalTension, setGlobalTension] = useState(0.5);
   const [nashProduct, setNashProduct] = useState(0);
   const [prevNashProduct, setPrevNashProduct] = useState(0);  // Track previous for delta
@@ -350,16 +351,19 @@ export default function NexusPage() {
     if (!simulationId) return;
 
     try {
+      setIsNextEpochLoading(true);
       const response = await fetch(`${API_BASE_URL}/simulation/${simulationId}/step`, {
         method: "POST",
       });
       if (!response.ok) throw new Error("Failed to step simulation");
+      setIsNextEpochLoading(false);
 
       // Refresh state after step
       await fetchSimulationState();
     }
     catch (error) {
       console.error("Error stepping simulation:", error);
+      setIsNextEpochLoading(false);
     }
   };
 
@@ -573,19 +577,29 @@ export default function NexusPage() {
                   size="sm"
                   className="bg-white text-black text-xs hover:bg-zinc-200"
                   onClick={stepSimulation}
-                  disabled={status === "COMPLETE"}
+                  disabled={status === "COMPLETE" || isNextEpochLoading}
                 >
-                  Next Epoch
+                  {isNextEpochLoading ? (
+                    <Loader2 size={12} className="mr-1 animate-spin" />
+                  ) : (
+                    "Next Epoch"
+                  )}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   className="text-xs border-white/10 hover:bg-white/5"
                   onClick={startStream}
-                  disabled={status === "COMPLETE"}
+                  disabled={status === "COMPLETE" || isNextEpochLoading}
                 >
-                  <Play size={12} className="mr-1" />
-                  Auto-run
+                  {isNextEpochLoading ? (
+                    <Loader2 size={12} className="mr-1 animate-spin" />
+                  ) : (
+                    <>
+                      <Play size={12} className="mr-1" />
+                      Auto-run
+                    </>
+                  )}
                 </Button>
               </>
             ) : (
