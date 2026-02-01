@@ -220,28 +220,49 @@ export default function NexusPage() {
       if (!response.ok) throw new Error("Failed to fetch simulation state");
 
       const data = await response.json();
+      // Backend wraps state in { success, state: {...} }
       const state: SimulationState = data.state;
+      
+      if (!state || !state.agents) {
+        console.error("Invalid state response:", data);
+        setIsLoading(false);
+        return;
+      }
 
-      // Transform agents to nodes
-      const agentNodes: AgentNode[] = Object.values(state.agents).map((agent, idx) => ({
-        id: agent.agent_id,
-        name: agent.name,
-        group: agent.archetype,
-        val: 15 + (agent.political_capital / 10),  // Size based on political capital
-        sentiment: 0,  // Will be updated from chat history
-        politicalCapital: agent.political_capital,
-        privateMandate: agent.private_mandate,
-      }));
+      // Transform agents to nodes - deduplicate by agent_id
+      const seenIds = new Set<string>();
+      const agentNodes: AgentNode[] = Object.values(state.agents)
+        .filter((agent) => {
+          if (seenIds.has(agent.agent_id)) return false;
+          seenIds.add(agent.agent_id);
+          return true;
+        })
+        .map((agent) => ({
+          id: agent.agent_id,
+          name: agent.name,
+          group: agent.archetype,
+          val: 15 + (agent.political_capital / 10),  // Size based on political capital
+          sentiment: 0,  // Will be updated from chat history
+          politicalCapital: agent.political_capital,
+          privateMandate: agent.private_mandate,
+        }));
 
-      // Transform alliances to links
-      const allianceLinks: Link[] = state.active_alliances.map(([source, target, strength]) => ({
-        source: source as string,
-        target: target as string,
-        strength: strength as number,
-      }));
+      // Create set of valid node IDs for filtering links
+      const validNodeIds = new Set(agentNodes.map((n) => n.id));
+
+      // Transform alliances to links - only include links where both nodes exist
+      const allianceLinks: Link[] = (state.active_alliances || [])
+        .filter(([source, target]) => 
+          validNodeIds.has(source as string) && validNodeIds.has(target as string)
+        )
+        .map(([source, target, strength]) => ({
+          source: source as string,
+          target: target as string,
+          strength: strength as number,
+        }));
 
       // Transform chat history
-      const messages: ChatMessage[] = state.chat_history.map((msg) => ({
+      const messages: ChatMessage[] = (state.chat_history || []).map((msg) => ({
         agentId: msg.agent_id,
         epoch: msg.epoch,
         content: msg.content,
@@ -254,7 +275,8 @@ export default function NexusPage() {
       setCurrentEpoch(state.current_epoch);
       setGlobalTension(state.global_tension);
       setNashProduct(state.nash_product);
-      setStatus(state.status);
+      // Use status field directly from backend
+      setStatus(state.status === "COMPLETE" || state.status === "CONSENSUS_REACHED" ? "COMPLETE" : "READY");
       if (state.current_treaty?.issue_values) {
         setTreatyValues(state.current_treaty.issue_values);
       }
@@ -337,10 +359,15 @@ export default function NexusPage() {
       }
     };
 
-    eventSource.onerror = () => {
+    eventSource.onerror = (error) => {
+      console.error("SSE stream error:", error);
       setIsStreaming(false);
       eventSource.close();
       eventSourceRef.current = null;
+    };
+
+    eventSource.onopen = () => {
+      console.log("SSE stream connected successfully");
     };
   }, [simulationId]);
 
@@ -400,11 +427,32 @@ export default function NexusPage() {
       .append("svg")
       .attr("width", "100%")
       .attr("height", "100%")
-      .attr("viewBox", [0, 0, width, height]);
+      .attr("viewBox", [0, 0, width, height])
+      .style("cursor", "grab");
+
+    // Create a container group for all graph elements (will be transformed by zoom/pan)
+    const graphContainer = svg.append("g").attr("class", "graph-container");
 
     // Create mutable copies for D3
     const nodesCopy = nodes.map((d) => ({ ...d }));
-    const linksCopy = links.map((d) => ({ ...d }));
+    
+    // Create a set of valid node IDs to filter links
+    const nodeIdSet = new Set(nodesCopy.map((n) => n.id));
+    
+    // Filter links to only include those referencing existing nodes
+    // Handle both string IDs and object references (D3 mutates these)
+    const linksCopy = links
+      .filter((l) => {
+        const sourceId = typeof l.source === "string" ? l.source : (l.source as AgentNode)?.id;
+        const targetId = typeof l.target === "string" ? l.target : (l.target as AgentNode)?.id;
+        return sourceId && targetId && nodeIdSet.has(sourceId) && nodeIdSet.has(targetId);
+      })
+      .map((d) => ({
+        ...d,
+        // Ensure source/target are strings for fresh D3 simulation
+        source: typeof d.source === "string" ? d.source : (d.source as AgentNode).id,
+        target: typeof d.target === "string" ? d.target : (d.target as AgentNode).id,
+      }));
 
     // Force Simulation -- tighter spacing for better visual density
     const nodeCount = nodesCopy.length;
@@ -424,14 +472,15 @@ export default function NexusPage() {
       .force("center", d3.forceCenter(width / 2, height / 2))
       .force(
         "collision",
-        d3.forceCollide().radius((d: AgentNode) => d.val + 15),
+        d3.forceCollide<AgentNode>().radius((d) => d.val + 15),
       )
       .force("x", d3.forceX(width / 2).strength(0.05))
       .force("y", d3.forceY(height / 2).strength(0.05));
 
-    // Draw Links -- colour based on alliance strength
-    const link = svg
+    // Draw Links -- colour based on alliance strength (inside graphContainer)
+    const link = graphContainer
       .append("g")
+      .attr("class", "links")
       .selectAll("line")
       .data(linksCopy)
       .join("line")
@@ -439,12 +488,14 @@ export default function NexusPage() {
       .attr("stroke-opacity", 0.6)
       .attr("stroke-width", (d) => Math.max(1, d.strength * 4));
 
-    // Draw Nodes
-    const node = svg
+    // Draw Nodes (inside graphContainer)
+    const node = graphContainer
       .append("g")
-      .selectAll("g")
+      .attr("class", "nodes")
+      .selectAll<SVGGElement, AgentNode>("g")
       .data(nodesCopy)
       .join("g")
+      .style("cursor", "pointer")
       .call(
         d3
           .drag<SVGGElement, AgentNode>()
@@ -506,15 +557,37 @@ export default function NexusPage() {
 
     simulation.on("tick", () => {
       link
-        .attr("x1", (d) => (d.source as AgentNode).x ?? 0)
-        .attr("y1", (d) => (d.source as AgentNode).y ?? 0)
-        .attr("x2", (d) => (d.target as AgentNode).x ?? 0)
-        .attr("y2", (d) => (d.target as AgentNode).y ?? 0);
+        .attr("x1", (d) => ((d.source as unknown) as AgentNode).x ?? 0)
+        .attr("y1", (d) => ((d.source as unknown) as AgentNode).y ?? 0)
+        .attr("x2", (d) => ((d.target as unknown) as AgentNode).x ?? 0)
+        .attr("y2", (d) => ((d.target as unknown) as AgentNode).y ?? 0);
 
       node.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
     });
 
+    // Zoom and pan behavior
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.2, 4])  // Allow zoom from 20% to 400%
+      .on("start", function(event) {
+        // Change cursor when panning
+        if (event.sourceEvent && event.sourceEvent.type !== "wheel") {
+          d3.select(this).style("cursor", "grabbing");
+        }
+      })
+      .on("zoom", (event) => {
+        graphContainer.attr("transform", event.transform);
+      })
+      .on("end", function() {
+        d3.select(this).style("cursor", "grab");
+      });
+
+    // Apply zoom to SVG, but filter so node drags don't trigger pan
+    svg.call(zoom)
+      .on("dblclick.zoom", null);  // Disable double-click to zoom
+
     function dragstarted(event: d3.D3DragEvent<SVGGElement, AgentNode, AgentNode>) {
+      // Stop the zoom behavior from interfering with node drags
+      event.sourceEvent.stopPropagation();
       if (!event.active) simulation.alphaTarget(0.3).restart();
       event.subject.fx = event.subject.x;
       event.subject.fy = event.subject.y;
@@ -867,9 +940,9 @@ export default function NexusPage() {
                 No agents loaded
               </p>
             ) : (
-              nodes.map((node) => (
+              nodes.map((node, idx) => (
                 <div
-                  key={node.id}
+                  key={`${node.id}-${idx}`}
                   className={`p-4 rounded-lg border transition-all ${
                     node.sentiment > 0.2
                       ? "border-emerald-500/20 bg-emerald-500/5"
