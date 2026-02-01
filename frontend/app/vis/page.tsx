@@ -182,7 +182,6 @@ export default function NexusPage() {
   const simulationId = searchParams.get("id");
 
   const d3Container = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Simulation state
   const [isLoading, setIsLoading] = useState(true);
@@ -290,86 +289,125 @@ export default function NexusPage() {
 
   /**
    * Start the SSE stream to receive real-time updates.
+   * Uses fetch with ReadableStream instead of EventSource for better CORS support.
    */
-  const startStream = useCallback(() => {
-    if (!simulationId || eventSourceRef.current) return;
+  const startStream = useCallback(async () => {
+    if (!simulationId || isStreaming) return;
 
     setIsStreaming(true);
-    const eventSource = new EventSource(`${API_BASE_URL}/simulation/${simulationId}/stream`);
-    eventSourceRef.current = eventSource;
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/simulation/${simulationId}/stream`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'text/event-stream',
+        },
+      });
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+      if (!response.ok) {
+        throw new Error(`Stream failed: ${response.status}`);
+      }
 
-        if (data.type === "message_added") {
-          // Update metrics with delta tracking
-          setCurrentEpoch(data.epoch);
-          setGlobalTension(data.global_tension);
-          setPrevNashProduct(nashProduct);  // Store previous before updating
-          setNashProduct(data.nash_product);
-          setNashHistory((prev) => [...prev.slice(-9), data.nash_product]);  // Keep last 10 for sparkline
-          setLastSpeakingAgent(data.agent_id);  // Trigger pulse animation
-          setTimeout(() => setLastSpeakingAgent(null), 1500);  // Clear after animation
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
 
-          // Add message to chat history
-          setChatHistory((prev) => [...prev, {
-            agentId: data.agent_id,
-            epoch: data.epoch,
-            content: data.content,
-            sentimentDelta: data.sentiment_delta,
-          }]);
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-          // Update node sentiment and political capital
-          setNodes((prev) => prev.map((node) => {
-            const newCapital = data.agent_capitals?.[node.id] ?? node.politicalCapital;
-            return {
-              ...node,
-              sentiment: node.id === data.agent_id
-                ? Math.max(-1, Math.min(1, node.sentiment + data.sentiment_delta))
-                : node.sentiment,
-              politicalCapital: newCapital,
-              val: 15 + (newCapital / 10),  // Update node size based on capital
-            };
-          }));
+      const processEvents = (text: string) => {
+        const lines = text.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === "message_added") {
+                setCurrentEpoch(data.epoch);
+                setGlobalTension(data.global_tension);
+                setPrevNashProduct(nashProduct);
+                setNashProduct(data.nash_product);
+                setNashHistory((prev) => [...prev.slice(-9), data.nash_product]);
+                setLastSpeakingAgent(data.agent_id);
+                setTimeout(() => setLastSpeakingAgent(null), 1500);
 
-          // Update treaty values
-          if (data.treaty_values && Object.keys(data.treaty_values).length > 0) {
-            setTreatyValues(data.treaty_values);
+                setChatHistory((prev) => [...prev, {
+                  agentId: data.agent_id,
+                  epoch: data.epoch,
+                  content: data.content,
+                  sentimentDelta: data.sentiment_delta,
+                }]);
+
+                setNodes((prev) => prev.map((node) => {
+                  const newCapital = data.agent_capitals?.[node.id] ?? node.politicalCapital;
+                  return {
+                    ...node,
+                    sentiment: node.id === data.agent_id
+                      ? Math.max(-1, Math.min(1, node.sentiment + data.sentiment_delta))
+                      : node.sentiment,
+                    politicalCapital: newCapital,
+                    val: 15 + (newCapital / 10),
+                  };
+                }));
+
+                if (data.treaty_values && Object.keys(data.treaty_values).length > 0) {
+                  setTreatyValues(data.treaty_values);
+                }
+              }
+              else if (data.type === "coalitions_detected") {
+                const newLinks: Link[] = data.alliances.map(([source, target, strength]: [string, string, number]) => ({
+                  source,
+                  target,
+                  strength,
+                }));
+                setLinks(newLinks);
+              }
+              else if (data.type === "simulation_complete") {
+                setStatus("COMPLETE");
+                setIsStreaming(false);
+                return true; // Signal completion
+              }
+            } catch (parseErr) {
+              // Ignore parse errors for incomplete chunks
+            }
           }
         }
-        else if (data.type === "coalitions_detected") {
-          // Update alliances/links
-          const newLinks: Link[] = data.alliances.map(([source, target, strength]: [string, string, number]) => ({
-            source,
-            target,
-            strength,
-          }));
-          setLinks(newLinks);
-        }
-        else if (data.type === "simulation_complete") {
-          setStatus("COMPLETE");
-          setIsStreaming(false);
-          eventSource.close();
-          eventSourceRef.current = null;
-        }
-      }
-      catch (err) {
-        console.error("Error parsing SSE data:", err);
-      }
-    };
+        return false;
+      };
 
-    eventSource.onerror = (error) => {
-      console.error("SSE stream error:", error);
+      // Read stream
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process complete events (ending with double newline)
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || ''; // Keep incomplete part in buffer
+        
+        for (const part of parts) {
+          if (processEvents(part)) {
+            reader.cancel();
+            return;
+          }
+        }
+      }
+      
+      // Process any remaining buffer
+      if (buffer) {
+        processEvents(buffer);
+      }
+      
       setIsStreaming(false);
-      eventSource.close();
-      eventSourceRef.current = null;
-    };
-
-    eventSource.onopen = () => {
-      console.log("SSE stream connected successfully");
-    };
-  }, [simulationId]);
+      setStatus("COMPLETE");
+      
+    } catch (error) {
+      console.error("Stream error:", error);
+      setIsStreaming(false);
+    }
+  }, [simulationId, isStreaming, nashProduct]);
 
   /**
    * Advance simulation by one step (manual control).
@@ -401,13 +439,6 @@ export default function NexusPage() {
       return;
     }
     fetchSimulationState();
-
-    // Cleanup on unmount
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-    };
   }, [simulationId, router, fetchSimulationState]);
 
   // D3 force simulation -- re-render when nodes/links change
