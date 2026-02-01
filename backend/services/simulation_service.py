@@ -3,6 +3,7 @@
 Handles agent instantiation, turn execution, and state management.
 """
 
+import logging
 import random
 import uuid
 
@@ -235,6 +236,18 @@ class SimulationService:
 
         # === PHASE B: SELECT ===
         speaker_id = self._select_speaker(state, bids)
+
+        # === ABSOLUTE FAILSAFE: Force rotation if somehow same speaker selected ===
+        last_speaker = state.chat_history[-1].agent_id if state.chat_history else None
+        if speaker_id == last_speaker:
+            logging.warning(
+                "ECHO FAILSAFE TRIGGERED: %s was about to speak twice. Forcing rotation.",
+                speaker_id,
+            )
+            # Pick any other agent that's not the last speaker
+            other_agents = [aid for aid in state.agents.keys() if aid != last_speaker]
+            if other_agents:
+                speaker_id = other_agents[0]
 
         # === PHASE C: ACT ===
         message = self._generate_diplomatic_message(state, speaker_id)

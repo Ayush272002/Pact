@@ -5,6 +5,7 @@ Handles scenario creation, simulation control, and state retrieval.
 
 import asyncio
 import json
+import logging
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -125,10 +126,17 @@ async def stream_simulation(simulation_id: str) -> StreamingResponse:
 
     async def event_generator():
         """Generate SSE events for simulation updates."""
+        loop = asyncio.get_event_loop()
         final_status = "COMPLETE"
+
         for _ in range(20):  # Max epochs as safety limit
             try:
-                new_state = simulation_service.step(simulation_id)
+                # Run blocking step() in thread pool to avoid blocking event loop
+                new_state = await loop.run_in_executor(
+                    None,  # Use default executor
+                    simulation_service.step,
+                    simulation_id,
+                )
                 last_msg = new_state.chat_history[-1]
 
                 # Agent political capital updates
@@ -162,9 +170,12 @@ async def stream_simulation(simulation_id: str) -> StreamingResponse:
                     final_status = new_state.status
                     break
 
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.5)
 
             except ValueError:
+                break
+            except Exception as e:
+                logging.error("SSE stream error: %s", e)
                 break
 
         yield f'data: {{"type": "simulation_complete", "status": "{final_status}"}}\n\n'
