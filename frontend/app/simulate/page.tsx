@@ -8,7 +8,21 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Plus, Globe2, Zap, X, Trash2, Loader2, Sparkles } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Plus,
+  Globe2,
+  Zap,
+  X,
+  Trash2,
+  Loader2,
+  Sparkles,
+  Info,
+} from "lucide-react";
 
 /** Base URL for the backend API. */
 const API_BASE_URL = "http://localhost:8000/api";
@@ -350,9 +364,9 @@ export default function SimulatePage() {
         </div>
       </nav>
 
-      <main className="max-w-4xl mx-auto px-6 py-20">
+      <main className="px-6 py-20">
         <div className="space-y-24">
-          <section className="space-y-4">
+          <section className="space-y-4 max-w-4xl mx-auto">
             <div className="flex items-center gap-3 text-indigo-400 mb-6">
               <Zap size={14} />
               <span className="text-[12px] uppercase tracking-[0.3em] font-black">
@@ -410,29 +424,41 @@ export default function SimulatePage() {
             </div>
           </section>
 
-          <section className="space-y-12">
-            <div className="flex items-end justify-between border-b border-white/5 pb-4">
-              <h2 className="text-[13px] uppercase tracking-[0.2em] text-zinc-400 font-bold">
-                Participating Agents
-              </h2>
+          <section className="space-y-12 max-w-full">
+            <div className="flex items-end justify-between border-b border-white/5 pb-4 max-w-7xl mx-auto">
+              <div className="flex items-center gap-2">
+                <h2 className="text-[13px] uppercase tracking-[0.2em] text-zinc-400 font-bold">
+                  Participating Parties
+                </h2>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button className="text-zinc-600 hover:text-zinc-400 transition-colors">
+                      <Info size={14} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-zinc-900 border-zinc-800 text-zinc-200 text-xs max-w-xs">
+                    <p>A party is represented by an agent in the simulation</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Button
                 onClick={addParty}
                 variant="ghost"
                 className="text-[11px] uppercase tracking-widest hover:bg-white/5 text-indigo-400 h-8 font-bold"
               >
-                <Plus className="mr-2 h-3 w-3" /> New Agent
+                <Plus className="mr-2 h-3 w-3" /> New Party
               </Button>
             </div>
 
-            <div className="grid gap-16">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
               {parties.map((party, idx) => (
                 <div
                   key={party.id}
-                  className="group relative bg-[#080808] border border-white/5 p-10 rounded-2xl hover:border-white/10 transition-all duration-500 shadow-xl"
+                  className="group relative bg-[#080808] border border-white/5 p-8 rounded-2xl hover:border-white/10 transition-all duration-500 shadow-xl"
                 >
                   <div className="absolute -top-3 left-10 bg-[#030303] px-4 py-1 border border-white/10 rounded-full">
                     <span className="text-[11px] uppercase tracking-[0.1em] font-bold text-zinc-500">
-                      Agent 0{idx + 1}
+                      Party 0{idx + 1}
                     </span>
                   </div>
 
@@ -443,8 +469,8 @@ export default function SimulatePage() {
                         onChange={(e) =>
                           updateParty(party.id, "name", e.target.value)
                         }
-                        placeholder="AGENT_NAME"
-                        className="bg-transparent text-3xl font-light tracking-tight focus:outline-none placeholder:text-zinc-900 w-full"
+                        placeholder="PARTY_NAME"
+                        className="bg-transparent text-3xl font-light tracking-tight focus:outline-none placeholder:text-zinc-900 w-full break-words"
                       />
                       {parties.length > 1 && (
                         <button
@@ -471,7 +497,7 @@ export default function SimulatePage() {
                       />
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-16">
+                    <div className="space-y-8">
                       {/* Goals */}
                       <div className="space-y-6">
                         <div className="flex justify-between items-center border-b border-white/5 pb-2">
@@ -490,7 +516,7 @@ export default function SimulatePage() {
                             <div key={i} className="space-y-3">
                               <div className="flex items-center justify-between gap-2">
                                 <input
-                                  className="flex-1 bg-transparent text-sm text-zinc-200 focus:outline-none placeholder:text-zinc-900"
+                                  className="flex-1 bg-transparent text-sm text-zinc-200 focus:outline-none placeholder:text-zinc-900 break-words overflow-hidden text-ellipsis"
                                   placeholder="Goal..."
                                   value={g.text}
                                   onChange={(e) =>
@@ -548,7 +574,7 @@ export default function SimulatePage() {
                             <div key={i} className="space-y-3">
                               <div className="flex items-center justify-between gap-2">
                                 <input
-                                  className="flex-1 bg-transparent text-sm text-zinc-200 focus:outline-none placeholder:text-zinc-900"
+                                  className="flex-1 bg-transparent text-sm text-zinc-200 focus:outline-none placeholder:text-zinc-900 break-words overflow-hidden text-ellipsis"
                                   placeholder="Limit..."
                                   value={c.text}
                                   onChange={(e) =>
@@ -600,7 +626,7 @@ export default function SimulatePage() {
             </div>
           </section>
 
-          <footer className="flex flex-col items-center py-24 border-t border-white/5">
+          <footer className="flex flex-col items-center py-24 border-t border-white/5 max-w-4xl mx-auto">
             <button
               onClick={handleInitialiseSwarm}
               disabled={isSubmitting}
