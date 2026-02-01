@@ -78,6 +78,17 @@ export default function LandingPage() {
               </Button>
             </div>
           </div>
+
+          {/* Show Demo Button */}
+          <div className="flex justify-center mt-6">
+            <Button
+              onClick={() => router.push("/simulate?demo=true")}
+              variant="outline"
+              className="border-white/10 text-zinc-400 hover:bg-white/5 hover:text-zinc-200 text-sm"
+            >
+              Show Demo
+            </Button>
+          </div>
         </div>
 
         {/* Feature Grid */}
@@ -117,7 +128,7 @@ export default function LandingPage() {
               Consensus Map
             </h3>
             <p className="text-sm text-zinc-500 leading-relaxed">
-            Visualise the transition from polarised conflict to optimised
+              Visualise the transition from polarised conflict to optimised
               agreement through force-directed graphs.
             </p>
           </div>

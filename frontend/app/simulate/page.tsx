@@ -120,7 +120,11 @@ export default function SimulatePage() {
   useEffect(() => {
     setMounted(true);
     const scenarioParam = searchParams.get("scenario");
+    const demoParam = searchParams.get("demo");
     if (scenarioParam) setScenario(scenarioParam);
+    if (demoParam === "true") {
+      loadDemoScenario();
+    }
   }, [searchParams]);
 
   // --- Logic Handlers ---
