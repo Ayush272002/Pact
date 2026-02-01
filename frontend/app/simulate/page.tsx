@@ -15,13 +15,15 @@ const API_BASE_URL = "http://localhost:8000/api";
 
 /** Demo scenario preset -- "Arctic Oil Treaty 2030". */
 const DEMO_SCENARIO = {
-  description: "Three Arctic nations must negotiate drilling rights, environmental protections, and revenue sharing for a newly discovered oil field in disputed waters. Rising tensions and climate concerns add urgency to reaching a sustainable agreement.",
+  description:
+    "Three Arctic nations must negotiate drilling rights, environmental protections, and revenue sharing for a newly discovered oil field in disputed waters. Rising tensions and climate concerns add urgency to reaching a sustainable agreement.",
   volatility: 0.4,
   parties: [
     {
       id: "demo-norway",
       name: "Norwegian Delegation",
-      description: "A wealthy Nordic nation prioritising environmental standards whilst seeking economic benefits from Arctic resources.",
+      description:
+        "A wealthy Nordic nation prioritising environmental standards whilst seeking economic benefits from Arctic resources.",
       goals: [
         { text: "Secure 40% revenue share from oil extraction", priority: 8 },
         { text: "Establish binding environmental protections", priority: 9 },
@@ -34,10 +36,14 @@ const DEMO_SCENARIO = {
     {
       id: "demo-russia",
       name: "Russian Federation",
-      description: "A major energy power seeking to expand Arctic influence and maximise extraction capacity.",
+      description:
+        "A major energy power seeking to expand Arctic influence and maximise extraction capacity.",
       goals: [
         { text: "Gain majority control of extraction operations", priority: 9 },
-        { text: "Minimise environmental restrictions on drilling", priority: 7 },
+        {
+          text: "Minimise environmental restrictions on drilling",
+          priority: 7,
+        },
       ],
       constraints: [
         { text: "Will not accept third-party oversight", priority: 8 },
@@ -47,7 +53,8 @@ const DEMO_SCENARIO = {
     {
       id: "demo-canada",
       name: "Canadian Government",
-      description: "Balancing indigenous rights, environmental concerns, and economic development in the North.",
+      description:
+        "Balancing indigenous rights, environmental concerns, and economic development in the North.",
       goals: [
         { text: "Protect indigenous land and fishing rights", priority: 10 },
         { text: "Secure infrastructure investment commitments", priority: 6 },
@@ -83,7 +90,7 @@ export default function SimulatePage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [scenario, setScenario] = useState("");
-  const [volatility, setVolatility] = useState(0.3);  // Global volatility scalar (0.0--1.0)
+  const [volatility, setVolatility] = useState(0.3); // Global volatility scalar (0.0--1.0)
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [parties, setParties] = useState<Party[]>([
     {
@@ -262,9 +269,12 @@ export default function SimulatePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scenario_name: scenario.slice(0, 50),  // Use first 50 chars as name
+          scenario_name: scenario.slice(0, 50), // Use first 50 chars as name
           description: scenario,
-          negotiation_issues: negotiationIssues.length > 0 ? negotiationIssues : ["general_agreement"],
+          negotiation_issues:
+            negotiationIssues.length > 0
+              ? negotiationIssues
+              : ["general_agreement"],
           global_volatility: volatility,
           max_epochs: 10,
         }),
@@ -279,12 +289,14 @@ export default function SimulatePage() {
 
       // Navigate to visualisation page with the simulation ID
       router.push(`/vis?id=${data.simulation_id}`);
-    }
-    catch (error) {
+    } catch (error) {
       console.error("Failed to initialise simulation:", error);
-      alert(error instanceof Error ? error.message : "Failed to connect to backend. Ensure the server is running.");
-    }
-    finally {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to connect to backend. Ensure the server is running.",
+      );
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -334,19 +346,7 @@ export default function SimulatePage() {
             <span className="text-zinc-200 border-b border-indigo-500 pb-1">
               Simulator
             </span>
-            <span className="hover:text-zinc-300 transition-colors cursor-pointer">
-              Protocol
-            </span>
-            <span className="hover:text-zinc-300 transition-colors cursor-pointer">
-              Ledger
-            </span>
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
-          <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-400 font-bold">
-            System Online
-          </span>
         </div>
       </nav>
 
@@ -361,13 +361,13 @@ export default function SimulatePage() {
             </div>
             <div className="flex items-end justify-between gap-4">
               <h1 className="text-5xl md:text-6xl font-light tracking-tight text-white leading-tight">
-                Initialize <span className="text-zinc-600 italic">Scenario.</span>
+                Initialise{" "}
+                <span className="text-zinc-600 italic">Scenario.</span>
               </h1>
               <button
                 onClick={loadDemoScenario}
                 className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-full text-[11px] uppercase tracking-widest font-bold hover:bg-amber-500/20 transition-colors whitespace-nowrap"
               >
-                <Sparkles size={14} />
                 Load Demo
               </button>
             </div>
@@ -379,8 +379,8 @@ export default function SimulatePage() {
                 value={scenario}
                 onChange={(e) => setScenario(e.target.value)}
                 placeholder="Define the conflict landscape..."
-                className="w-full bg-transparent border-b border-white/10 py-4 text-2xl font-light focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-zinc-900 resize-none overflow-hidden"
-                rows={1}
+                className="w-full bg-transparent border border-white/10 py-4 px-4 text-2xl font-light focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-zinc-900 resize-none overflow-y-auto rounded-lg"
+                rows={5}
               />
             </div>
 
@@ -395,7 +395,8 @@ export default function SimulatePage() {
                 </span>
               </div>
               <p className="text-[11px] text-zinc-600 -mt-2">
-                Controls probability of stochastic shocks (0% = stable, 100% = chaotic)
+                Controls probability of stochastic shocks (0% = stable, 100% =
+                chaotic)
               </p>
               <input
                 type="range"
@@ -605,7 +606,7 @@ export default function SimulatePage() {
               disabled={isSubmitting}
               className="group relative px-14 py-5 overflow-hidden rounded-full bg-white text-black font-bold transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              <span className="relative z-10 flex items-center gap-3 uppercase text-[12px] tracking-[0.2em]">
+              <span className="relative z-10 flex items-center gap-3 uppercase text-[12px] tracking-[0.2em] cursor-pointer">
                 {isSubmitting ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
@@ -620,7 +621,7 @@ export default function SimulatePage() {
               <div className="absolute inset-0 bg-indigo-500 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
             </button>
             <p className="mt-10 text-[10px] uppercase tracking-[0.4em] text-zinc-700 font-bold">
-              Convergent Intelligence Protocol // v1.0.4
+              Convergent Intelligence Protocol
             </p>
           </footer>
         </div>

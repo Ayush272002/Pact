@@ -44,14 +44,6 @@ export default function LandingPage() {
             </a>
           </div>
         </div>
-        <a
-          href="https://github.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs uppercase tracking-widest text-zinc-500 hover:text-white transition-colors"
-        >
-          View on GitHub
-        </a>
       </nav>
 
       {/* Hero Section */}
@@ -65,12 +57,6 @@ export default function LandingPage() {
             Force consensus <br />
             <span className="text-zinc-500 italic">through conflict.</span>
           </h1>
-
-          <p className="text-zinc-400 text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed">
-            A swarm of adversarial AI agents brute-forcing Nash Equilibrium.
-            Define the scenario, watch the agents negotiate, and witness the
-            emergent treaty.
-          </p>
 
           {/* Prompt / Input Bar */}
           <div className="relative max-w-2xl mx-auto group">
@@ -106,7 +92,7 @@ export default function LandingPage() {
             </h3>
             <p className="text-sm text-zinc-500 leading-relaxed">
               Parallel negotiation rounds where agents propose, critique, and
-              trade via Monte Carlo simulations.
+              trade via simulation.
             </p>
           </div>
           <div className="p-10 bg-[#030303] hover:bg-zinc-900/50 transition-colors group border-x border-white/5">
@@ -140,7 +126,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="p-8 border-t border-white/5 flex justify-center items-center text-[10px] text-zinc-600 uppercase tracking-[0.2em]">
-        <span>Multi-Agent Negotiation Simulation • Built for ICHack 2026</span>
+        <span>Multi-Agent Negotiation Simulation</span>
       </footer>
     </div>
   );
