@@ -80,7 +80,7 @@ frontend/             -> Next.js frontend (Strategic Dashboard)
 ├── lib/              -> Utility functions
 └── types/            -> TypeScript type definitions
 
-backend/               -> FastAPI (The Nash Engine & LangGraph state machine)
+backend/              -> FastAPI (The Nash Engine & LangGraph state machine)
 ├── core/             -> Core constants and configuration
 ├── routers/          -> API endpoints (simulation_router.py)
 ├── services/         -> Business logic (LLM & simulation services)
