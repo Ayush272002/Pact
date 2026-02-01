@@ -553,7 +553,7 @@ export default function NexusPage() {
       godMode ? "ring-1 ring-inset ring-amber-500/30" : ""
     }`}>
       {/* LEFT SIDEBAR: Controls & Diplomatic Feed */}
-      <aside className="w-80 border-r border-white/5 flex flex-col bg-zinc-950/50 backdrop-blur-xl">
+      <aside className="w-1/3 border-r border-white/5 flex flex-col bg-zinc-950/50 backdrop-blur-xl">
         <div className="p-6 border-b border-white/5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -854,7 +854,7 @@ export default function NexusPage() {
       </main>
 
       {/* RIGHT SIDEBAR: Agent Insights */}
-      <aside className="w-80 border-l border-white/5 bg-zinc-950/20 hidden lg:flex flex-col">
+      <aside className="w-1/6 border-l border-white/5 bg-zinc-950/20 hidden lg:flex flex-col">
         <div className="p-5 border-b border-white/5">
           <h4 className="text-[10px] uppercase tracking-widest text-zinc-500 font-medium">
             Negotiating Parties
