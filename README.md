@@ -1,6 +1,6 @@
 # Pact: The Nash Engine
 
-**Pact** is a game-theoretic negotiation framework that moves beyond "polite" AI. By combining Large Language Models with formal International Relations theory, Pact simulates high-stakes environments where agents must maximize utility functions, manage "Audience Costs," and navigate the "Shadow of the Future."
+**Pact** is a game-theoretic negotiation framework that moves beyond "polite" AI. By combining Large Language Models with formal International Relations theory, Pact simulates high-stakes environments where agents must maximise utility functions, manage "Audience Costs," and navigate the "Shadow of the Future."
 
 Unlike standard chatbots, Pact agents have the **mathematical freedom to defect**, leading to emergent, realistic strategic behaviors.
 
@@ -74,9 +74,9 @@ To prevent "Diplomatic Drift," all treaties are managed via a rigorous JSON-base
 frontend/             -> Next.js frontend (Strategic Dashboard)
 ├── app/              -> Next.js App Router
 │   ├── simulate/     -> Simulation interface page
-│   ├── vis/          -> Game tree visualization page
+│   ├── vis/          -> Game tree visualisation page
 │   └── page.tsx      -> Home page
-├── components/ui/    -> shadcn/ui visualization components
+├── components/ui/    -> shadcn/ui visualisation components
 ├── lib/              -> Utility functions
 └── types/            -> TypeScript type definitions
 
