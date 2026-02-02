@@ -4,7 +4,7 @@
 
 Unlike standard chatbots, Pact agents have the **mathematical freedom to defect**, leading to emergent, realistic strategic behaviors.
 
-
+[Checkout on Devpost](https://devpost.com/software/pact-sq6fgj)
 
 ---
 
@@ -17,7 +17,7 @@ Unlike standard chatbots, Pact agents have the **mathematical freedom to defect*
     * **Zero-Determinant (ZD):** Coercive strategies that unilaterally dictate the terms of cooperation.
 * **The Utility Function:** Agents calculate success based on:
     $$U_i = (1 - \text{Tension}) \times (0.5 + 0.5 \times \delta)$$
-    *Where $\delta$ represents the **Shadow of the Future** (discount factor).*
+    *Where* $$\delta$$ *represents the **Shadow of the Future** (discount factor).*
 
 ---
 
