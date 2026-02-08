@@ -88,6 +88,3 @@ backend/              -> FastAPI (The Nash Engine & LangGraph state machine)
 ├── schemas.py        -> Pydantic data models
 └── main.py           -> FastAPI application entry point
 ```
-
-## License
-[MIT License](LICENSE)
